@@ -13,6 +13,14 @@ function runRetentionCleanup() {
 }
 
 function start() {
+  // Init monitor worker
+  try {
+    const { initMonitorWorker } = require('./services/monitorWorker');
+    initMonitorWorker();
+  } catch (e) {
+    console.error('[Scheduler] Monitor worker init failed:', e.message);
+  }
+
   // Daily 03:00 — cleanup revoked tokens + audit retention
   cron.schedule('0 3 * * *', () => {
     console.log('[Scheduler] Daily cleanup...');
