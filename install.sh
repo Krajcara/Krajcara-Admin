@@ -155,7 +155,7 @@ success ".env created"
 info "Installing server dependencies..."
 cd "$INSTALL_DIR/server"
 unset NODE_ENV
-npm install --silent 2>&1 | tail -3
+npm install 2>&1 | tail -8
 
 info "Installing client dependencies..."
 cd "$INSTALL_DIR/client"
