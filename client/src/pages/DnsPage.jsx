@@ -211,16 +211,20 @@ function CloudflareSection({ canEdit }) {
 
   useEffect(() => { loadConfig() }, [loadConfig])
 
-  // Auto-refresh zones every 90 seconds when configured
+  // When config is loaded and configured — auto-fetch zones immediately, then refresh every 90s
   useEffect(() => {
-    if (!config?.configured || zones.length === 0) return
+    if (!config?.configured) return
+    // Initial auto-fetch (silent if zones already loaded)
+    fetchZones(zones.length > 0)
+    // Then refresh every 90 seconds
+    clearInterval(autoRefreshRef.current)
     autoRefreshRef.current = setInterval(() => {
       api.get('/dns/cloudflare/zones')
         .then(r => setZones(r.data))
         .catch(() => {})
     }, 90000)
     return () => clearInterval(autoRefreshRef.current)
-  }, [config?.configured, zones.length])
+  }, [config?.configured]) // eslint-disable-line
 
   const saveConfig = async (e) => {
     e.preventDefault(); setSaving(true); setError('')
