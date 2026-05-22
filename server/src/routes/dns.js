@@ -208,4 +208,93 @@ router.get('/check-all', async (req, res) => {
   res.json(results);
 });
 
+// ── Cloudflare integration ────────────────────────────────────────────────────
+
+// GET /api/dns/cloudflare/config — get saved token (masked)
+router.get('/cloudflare/config', (req, res) => {
+  const token  = db.prepare("SELECT value FROM settings WHERE key='cloudflare_api_token'").get()?.value;
+  const zoneId = db.prepare("SELECT value FROM settings WHERE key='cloudflare_zone_id'").get()?.value;
+  res.json({ configured: !!token, has_zone_id: !!zoneId });
+});
+
+// POST /api/dns/cloudflare/config — save token
+router.post('/cloudflare/config', requireRole('superadmin', 'admin'), (req, res) => {
+  const { token, zone_id } = req.body;
+  if (token && token !== '***') {
+    db.prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES ('cloudflare_api_token',?,datetime('now'))").run(token);
+  }
+  if (zone_id !== undefined) {
+    db.prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES ('cloudflare_zone_id',?,datetime('now'))").run(zone_id || null);
+  }
+  writeAuditLog({ userId: req.user.id, username: req.user.username, action: 'update', module: 'dns', entityName: 'Cloudflare config', ip: req.ip, userAgent: req.headers['user-agent'] });
+  res.json({ ok: true });
+});
+
+// GET /api/dns/cloudflare/zones — fetch Cloudflare zones with DNS records check
+router.get('/cloudflare/zones', async (req, res) => {
+  const token  = db.prepare("SELECT value FROM settings WHERE key='cloudflare_api_token'").get()?.value;
+  const zoneId = db.prepare("SELECT value FROM settings WHERE key='cloudflare_zone_id'").get()?.value;
+
+  if (!token) return res.status(400).json({ error: 'Cloudflare API token not configured' });
+
+  const hdrs = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const opts = { timeout: 15000, family: 4 };
+
+  try {
+    let zones = [];
+    if (zoneId) {
+      try {
+        const r = await axios.get(`https://api.cloudflare.com/client/v4/zones/${zoneId}`, { headers: hdrs, ...opts });
+        if (r.data.success) zones = [r.data.result];
+      } catch {}
+    }
+    if (!zones.length) {
+      const r = await axios.get('https://api.cloudflare.com/client/v4/zones?per_page=50&status=active', { headers: hdrs, ...opts });
+      if (!r.data.success) return res.status(502).json({ error: r.data.errors?.[0]?.message || 'Cloudflare API error' });
+      zones = r.data.result || [];
+    }
+
+    // For each zone check DNS email records
+    const results = await Promise.all(zones.map(async (z) => {
+      const domainName = z.name;
+      const [mxR, txtR, dmarcR] = await Promise.allSettled([
+        dnsLib.resolveMx(domainName),
+        dnsLib.resolveTxt(domainName),
+        dnsLib.resolveTxt(`_dmarc.${domainName}`),
+      ]);
+
+      const txts   = txtR.status   === 'fulfilled' ? txtR.value.flat()   : [];
+      const dmarcs = dmarcR.status === 'fulfilled' ? dmarcR.value.flat() : [];
+      const mxs    = mxR.status    === 'fulfilled' ? mxR.value.sort((a,b) => a.priority - b.priority) : [];
+
+      let dkim = null;
+      for (const sel of ['default','selector1','selector2','google','k1','dkim','mail']) {
+        try {
+          const d = await dnsLib.resolveTxt(`${sel}._domainkey.${domainName}`);
+          const val = d.flat().join('');
+          if (val.includes('v=DKIM1')) { dkim = { selector: sel, value: val }; break; }
+        } catch {}
+      }
+
+      return {
+        zone_id:   z.id,
+        domain:    domainName,
+        status:    z.status,
+        spf:       txts.find(t => t.startsWith('v=spf1')) || null,
+        dmarc:     dmarcs.find(t => t.startsWith('v=DMARC1')) || null,
+        dkim,
+        mx:        mxs,
+        checked_at: new Date().toISOString(),
+      };
+    }));
+
+    res.json(results);
+  } catch (err) {
+    if (err.code === 'ETIMEDOUT' || err.code === 'ECONNRESET') {
+      return res.status(502).json({ error: 'Cloudflare API unreachable from this server' });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
