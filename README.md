@@ -193,6 +193,17 @@ krajcara-admin/
 - ✅ **Phase 4** — Infrastructure: Proxmox, Network Scanner, Scan Automation
 - ✅ **Phase 5** — Advanced: Microsoft 365, Backup & Restore
 
+## Dashboard
+
+The dashboard provides a real-time overview of all systems:
+
+- **Stat cards** — Uptime Monitor (up/down/degraded counts with colour), Proxmox (running VMs out of total), Licences count, Entra ID Apps count (red if secrets expiring within 30 days)
+- **Proxmox nodes** — per-node CPU/RAM/Disk usage bars, uptime, and a compact grid of all VMs and LXC containers with running/stopped status
+- **Last speed test** — Download / Upload / Ping from the most recent test
+- **Uptime Monitor list** — all monitors sorted by status (down first), with latency and status badge; updates in real-time via Socket.io
+
+Auto-refreshes every 60 seconds.
+
 ## Status Page
 
 Public page at `/status` — no login required, dark theme, auto-refresh every 30 seconds.
