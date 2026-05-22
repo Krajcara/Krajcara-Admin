@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Shield, LogOut, Sun, Moon, Menu, User,
   Users, Settings, BookOpen, KeyRound, RefreshCw, Activity, Network, Globe,
-  Server, Scan, CalendarClock
+  Server, Scan, CalendarClock, Wifi
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useThemeStore } from '../../store/themeStore'
@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { to: '/monitors',  label: 'Uptime Monitor', icon: Activity },
   { to: '/routers',   label: 'Routers',   icon: Network },
   { to: '/dns',       label: 'DNS',       icon: Globe },
+  { to: '/netspeed',  label: 'Net Speed',  icon: Wifi },
   { separator: true,  label: 'Account' },
   { to: '/profile',   label: 'Profile',   icon: User },
   { separator: true,  label: 'Infrastructure' },
