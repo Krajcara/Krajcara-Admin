@@ -44,10 +44,10 @@ function runFastCli() {
       }
     }
     if (!fastBin) {
-      // 2. Search nvm and npm global dirs
+      // 2. Search nvm bin dirs and npm global dirs (-type f,l to catch symlinks too)
       try {
         const found = es(
-          'find /root/.nvm/versions /root/.npm-global /usr/local/lib/node_modules -name "fast" -type f 2>/dev/null | head -1',
+          'find /root/.nvm/versions/node/*/bin /root/.npm-global/bin /usr/local/lib/node_modules/.bin -maxdepth 1 -name "fast" 2>/dev/null | head -1',
           { timeout: 5000 }
         ).toString().trim();
         if (found) fastBin = found;
