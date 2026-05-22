@@ -132,7 +132,8 @@ krajcara-admin/
 
 ## Roadmap
 
-- **Phase 2** — Inventory: Licences (manual + Entra ID Apps), Clients
+- ✅ **Phase 1** — Foundation: Auth, TOTP, Dashboard, Status Page, Users, Audit Log, Settings, API Keys, Update system
+- ✅ **Phase 2** — Inventory: Licences (manual + Entra ID Apps)
 - **Phase 3** — Network: Uptime Monitor, Routers (SNMP), DNS (Local + External)
 - **Phase 4** — Infrastructure: Proxmox, Network Scanner, Scan Automation
 - **Phase 5** — Advanced: Microsoft 365, Backup & Restore, Reports
