@@ -159,7 +159,14 @@ npm install 2>&1 | tail -8
 
 info "Installing fast-cli globally..."
 npm install -g fast-cli 2>&1 | tail -3
-success "fast-cli installed"
+# Ensure 'fast' is accessible system-wide regardless of nvm path
+FAST_BIN=$(find /root/.nvm /usr/local/lib /usr/lib -name "fast" -type f 2>/dev/null | head -1)
+if [ -n "$FAST_BIN" ]; then
+  ln -sf "$FAST_BIN" /usr/local/bin/fast
+  success "fast-cli installed at $FAST_BIN"
+else
+  warn "fast-cli binary not found after install — speed test may not work"
+fi
 
 info "Installing client dependencies..."
 cd "$INSTALL_DIR/client"
