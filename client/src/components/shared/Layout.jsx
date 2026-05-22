@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Shield, LogOut, Sun, Moon, Menu, User,
   Users, Settings, BookOpen, KeyRound, RefreshCw, Activity, Network, Globe,
-  Server, Scan, CalendarClock, Wifi
+  Server, Scan, CalendarClock, Wifi, Cloud, HardDrive
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useThemeStore } from '../../store/themeStore'
@@ -18,6 +18,9 @@ const NAV_ITEMS = [
   { to: '/routers',   label: 'Routers',   icon: Network },
   { to: '/dns',       label: 'DNS',       icon: Globe },
   { to: '/netspeed',  label: 'Net Speed',  icon: Wifi },
+  { separator: true,  label: 'Advanced' },
+  { to: '/m365',       label: 'Microsoft 365', icon: Cloud },
+  { to: '/backup',     label: 'Backup',        icon: HardDrive, roles: ['superadmin'] },
   { separator: true,  label: 'Account' },
   { to: '/profile',   label: 'Profile',   icon: User },
   { separator: true,  label: 'Infrastructure' },
