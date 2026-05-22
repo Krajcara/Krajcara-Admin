@@ -23,6 +23,7 @@ const auditRoutes   = require('./routes/audit');
 const apiKeyRoutes  = require('./routes/api-keys');
 const statusRoutes   = require('./routes/status');
 const licencesRoutes = require('./routes/licences');
+const updateRoutes   = require('./routes/update');
 
 const app    = express();
 const server = http.createServer(app);
@@ -63,6 +64,7 @@ app.use('/api/settings',    requireAuth, settingsRoutes);
 app.use('/api/audit',       requireAuth, auditRoutes);
 app.use('/api/api-keys',    requireAuth, apiKeyRoutes);
 app.use('/api/licences',   requireAuth, licencesRoutes);
+app.use('/api/update',    requireAuth, updateRoutes);
 
 // ── Socket.io ─────────────────────────────────────────────────────
 io.on('connection', (socket) => {
@@ -73,7 +75,8 @@ io.on('connection', (socket) => {
 if (process.env.NODE_ENV === 'production') {
   const dist = path.join(__dirname, '../../client/dist');
   app.use(express.static(dist));
-  app.get('/{*path}', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
+  // Catch-all: serve index.html for any non-API route (React Router handles it)
+  app.get(/^(?!\/api).*/, (_req, res) => res.sendFile(path.join(dist, 'index.html')));
 }
 
 // ── Error handler ─────────────────────────────────────────────────
