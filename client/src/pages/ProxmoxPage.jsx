@@ -157,10 +157,9 @@ function NodeCard({ node, onAction, canManage }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {[...(node.vms||[]), ...(node.lxc||[])].sort((a,b) => {
-                    if (a.status !== b.status) return a.status === 'running' ? -1 : 1
-                    return (a.name||'').localeCompare(b.name||'')
-                  }).map(vm => <VmRow key={`${vm.type}-${vm.vmid}`} vm={vm} node={node.node} onAction={onAction} canManage={canManage} />)}
+                  {[...(node.vms||[]), ...(node.lxc||[])].sort((a, b) =>
+                    (a.name || '').localeCompare(b.name || '')
+                  ).map(vm => <VmRow key={`${vm.type}-${vm.vmid}`} vm={vm} node={node.node} onAction={onAction} canManage={canManage} />)}
                 </tbody>
               </table>
             </div>
