@@ -32,7 +32,9 @@ router.get('/public', (req, res) => {
 // GET /api/monitors/:id/checks
 router.get('/:id/checks', (req, res) => {
   const hours = parseInt(req.query.hours) || 3;
-  const since = new Date(Date.now() - hours * 3600 * 1000).toISOString();
+  // Use SQLite datetime format (not ISO with T/Z) for correct string comparison
+  const since = new Date(Date.now() - hours * 3600 * 1000)
+    .toISOString().replace('T', ' ').substring(0, 19);
   const checks = db.prepare(
     'SELECT * FROM monitor_checks WHERE monitor_id = ? AND checked_at >= ? ORDER BY checked_at ASC LIMIT 1440'
   ).all(req.params.id, since);
@@ -41,7 +43,8 @@ router.get('/:id/checks', (req, res) => {
 
 // GET /api/monitors/:id/uptime
 router.get('/:id/uptime', (req, res) => {
-  const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+  const since = new Date(Date.now() - 30 * 24 * 3600 * 1000)
+    .toISOString().replace('T', ' ').substring(0, 19);
   const checks = db.prepare(
     'SELECT status, checked_at FROM monitor_checks WHERE monitor_id = ? AND checked_at >= ? ORDER BY checked_at ASC'
   ).all(req.params.id, since);
