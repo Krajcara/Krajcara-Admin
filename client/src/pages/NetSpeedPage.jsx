@@ -120,7 +120,7 @@ function RunningBanner() {
       </div>
       <div>
         <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">Speed test in progress</p>
-        <p className="text-xs text-blue-500 dark:text-blue-400 mt-0.5">Testing via fast.com — this takes 30–60 seconds</p>
+        <p className="text-xs text-blue-500 dark:text-blue-400 mt-0.5">Testing via Cloudflare — this takes 30–60 seconds</p>
       </div>
     </div>
   )
@@ -195,7 +195,7 @@ export default function NetSpeedPage() {
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">Net Speed</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            Internet speed tests via fast.com
+            Internet speed tests via Cloudflare
             {lastTest && ` · Last test: ${fmtTime(lastTest.created_at)}`}
           </p>
         </div>
