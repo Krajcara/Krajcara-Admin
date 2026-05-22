@@ -107,4 +107,44 @@ router.get('/:id/ping', async (req, res) => {
   }
 });
 
+// GET /api/routers/:id/stats — SNMP stats (uptime, cpu, mem, interfaces)
+router.get('/:id/stats', async (req, res) => {
+  const r = db.prepare('SELECT * FROM routers WHERE id = ?').get(req.params.id);
+  if (!r) return res.status(404).json({ error: 'Not found' });
+
+  const brand   = (r.brand || '').toLowerCase();
+  const snmpCfg = {
+    snmp_version:        r.snmp_version       || '2c',
+    snmp_community:      r.snmp_community      || 'public',
+    snmp_port:           r.snmp_port           || 161,
+    snmp_username:       r.snmp_username       || '',
+    snmp_auth_protocol:  r.snmp_auth_protocol  || 'SHA',
+    snmp_auth_password:  r.snmp_auth_password  || '',
+    snmp_priv_protocol:  r.snmp_priv_protocol  || 'AES',
+    snmp_priv_password:  r.snmp_priv_password  || '',
+    snmp_security_level: r.snmp_security_level || 'authPriv',
+    model: r.model,
+  };
+
+  try {
+    if (brand === 'mikrotik') {
+      const { pollMikrotikSnmp } = require('../lib/snmp-mikrotik');
+      return res.json(await pollMikrotikSnmp(r.ip_address, snmpCfg));
+    }
+    if (brand === 'fortigate') {
+      const { pollFortigate } = require('../lib/snmp-fortigate');
+      return res.json(await pollFortigate(r.ip_address, snmpCfg));
+    }
+    if (brand === 'cisco') {
+      const { pollCisco } = require('../lib/snmp-cisco');
+      return res.json(await pollCisco(r.ip_address, snmpCfg));
+    }
+    // Generic — standard MIBs only (sysDescr, sysUpTime, ifTable)
+    const { genericSnmpStats } = require('../lib/snmp-generic');
+    return res.json(await genericSnmpStats(r.ip_address, snmpCfg));
+  } catch (err) {
+    res.json({ connected: false, brand, error: err.message });
+  }
+});
+
 module.exports = router;
