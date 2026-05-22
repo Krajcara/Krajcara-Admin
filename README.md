@@ -47,6 +47,11 @@ The updater:
 
 ## Changelog
 
+### Phase 4 — Infrastructure
+- **Proxmox** — connect via API token; view nodes, VMs and LXC containers with CPU/RAM/disk usage; start/stop/reboot/shutdown actions; storage overview per node
+- **Network Scanner** — three tabs in one page: Hosts (manage scan targets: IP, subnet, hostname, range), New Scan (6 nmap profiles + custom args, real-time progress via Socket.io), Scan History (paginated, diff view comparing open ports to previous scan)
+- **Scan Automation** — three tabs in one page: Schedules (cron-based automated scans with enable/disable toggle), Alert Rules (trigger on new port / closed port / service change / host up/down / any change, email + webhook channels), Alerts Log (unread filter, acknowledge per alert)
+
 ### Phase 3 — Network
 - **Uptime Monitor** — HTTP, HTTPS, TCP, ICMP and DNS monitors with real-time status via WebSocket; latency sparkline chart per monitor; status badges (up/down/degraded); linked to public Status Page
 - **Routers** — router inventory with brand (MikroTik, Cisco, FortiGate, Ubiquiti, Juniper, HP, Other), model, IP, SNMP v2c/v3 configuration; ping check per router
@@ -148,7 +153,7 @@ krajcara-admin/
 - ✅ **Phase 1** — Foundation: Auth, TOTP, Dashboard, Status Page, Users, Audit Log, Settings, API Keys, Update system
 - ✅ **Phase 2** — Inventory: Licences (manual + Entra ID Apps)
 - ✅ **Phase 3** — Network: Uptime Monitor, Routers (SNMP), DNS (Local + External)
-- **Phase 4** — Infrastructure: Proxmox, Network Scanner, Scan Automation
+- ✅ **Phase 4** — Infrastructure: Proxmox, Network Scanner, Scan Automation
 - **Phase 5** — Advanced: Microsoft 365, Backup & Restore, Reports
 
 ## License
