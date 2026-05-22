@@ -29,7 +29,38 @@ function runFastCli() {
   return new Promise((resolve, reject) => {
     // fast-cli with --upload flag and JSON output
     // fast --upload --json outputs: {"downloadSpeed":X,"uploadSpeed":Y,"ping":Z,"downloaded":N,"latency":M,"bufferBloat":B,"userLocation":"...","userIp":"..."}
-    const fastBin = process.env.FAST_CLI_PATH || 'fast';
+    // Locate fast binary — try known paths before giving up
+    const { execSync: es } = require('child_process');
+    const KNOWN_PATHS = [
+      '/usr/local/bin/fast',
+      '/usr/bin/fast',
+    ];
+    let fastBin = process.env.FAST_CLI_PATH || null;
+
+    if (!fastBin) {
+      // 1. Check known symlink locations
+      for (const p of KNOWN_PATHS) {
+        try { es(`test -x ${p}`, { timeout: 1000 }); fastBin = p; break; } catch {}
+      }
+    }
+    if (!fastBin) {
+      // 2. Search nvm and npm global dirs
+      try {
+        const found = es(
+          'find /root/.nvm/versions /root/.npm-global /usr/local/lib/node_modules -name "fast" -type f 2>/dev/null | head -1',
+          { timeout: 5000 }
+        ).toString().trim();
+        if (found) fastBin = found;
+      } catch {}
+    }
+    if (!fastBin) {
+      // 3. Last resort: which
+      try { fastBin = es('which fast 2>/dev/null', { timeout: 2000 }).toString().trim(); } catch {}
+    }
+    if (!fastBin) {
+      throw new Error('fast-cli not found. Run: sudo npm install -g fast-cli && sudo ln -sf $(which fast || find /root/.nvm -name fast -type f | head -1) /usr/local/bin/fast');
+    }
+
     const cmd = `${fastBin} --upload --json`;
 
     exec(cmd, { timeout: 120000, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
