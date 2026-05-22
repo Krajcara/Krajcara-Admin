@@ -319,3 +319,19 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_ports_result  ON port_findings(result_id);
   CREATE INDEX IF NOT EXISTS idx_alerts_ack    ON scan_alerts(acknowledged);
 `);
+
+// Net Speed — speed test results table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS speed_tests (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    download     REAL,
+    upload       REAL,
+    ping         REAL,
+    server       TEXT,
+    triggered_by TEXT DEFAULT 'auto',
+    status       TEXT DEFAULT 'done',
+    error        TEXT,
+    created_at   TEXT DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_speed_tests_created ON speed_tests(created_at);
+`);
