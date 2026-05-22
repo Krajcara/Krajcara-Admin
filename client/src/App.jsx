@@ -19,6 +19,8 @@ import ProxmoxPage       from './pages/ProxmoxPage'
 import NetworkScannerPage from './pages/NetworkScannerPage'
 import ScanAutomationPage from './pages/ScanAutomationPage'
 import NetSpeedPage       from './pages/NetSpeedPage'
+import M365Page           from './pages/M365Page'
+import BackupPage         from './pages/BackupPage'
 
 function ProtectedRoute({ children, roles }) {
   const { isAuthenticated, user } = useAuthStore()
@@ -52,6 +54,8 @@ export default function App() {
           <Route path="scanner"     element={<NetworkScannerPage />} />
           <Route path="automation"  element={<ScanAutomationPage />} />
           <Route path="netspeed"     element={<NetSpeedPage />} />
+          <Route path="m365"         element={<M365Page />} />
+          <Route path="backup"       element={<ProtectedRoute roles={['superadmin']}><BackupPage /></ProtectedRoute>} />
           <Route path="users"    element={<ProtectedRoute roles={['superadmin', 'admin']}><UsersPage /></ProtectedRoute>} />
           <Route path="audit"    element={<ProtectedRoute roles={['superadmin', 'admin']}><AuditPage /></ProtectedRoute>} />
           <Route path="settings" element={<ProtectedRoute roles={['superadmin', 'admin']}><SettingsPage /></ProtectedRoute>} />
