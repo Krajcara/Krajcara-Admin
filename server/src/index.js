@@ -27,6 +27,8 @@ const updateRoutes   = require('./routes/update');
 const monitorsRoutes = require('./routes/monitors');
 const routersRoutes  = require('./routes/routers');
 const dnsRoutes      = require('./routes/dns');
+const proxmoxRoutes  = require('./routes/proxmox');
+const { router: scannerRouter, initSchedules } = require('./routes/scanner');
 
 const app    = express();
 const server = http.createServer(app);
@@ -75,6 +77,8 @@ app.use('/api/update',      requireAuth, updateRoutes);
 app.use('/api/monitors',    requireAuth, monitorsRoutes);
 app.use('/api/routers',     requireAuth, routersRoutes);
 app.use('/api/dns',         requireAuth, dnsRoutes);
+app.use('/api/proxmox',     requireAuth, proxmoxRoutes);
+app.use('/api/scanner',     requireAuth, scannerRouter);
 
 // ── Socket.io ─────────────────────────────────────────────────────
 io.on('connection', (socket) => {
