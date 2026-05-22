@@ -19,7 +19,6 @@ const STATUS_COLOR = {
   degraded: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
   unknown:  'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
 }
-
 const MONITOR_TYPES = ['http', 'https', 'tcp', 'icmp', 'dns']
 const INTERVALS = [
   { label: '30 seconds', value: 30 },
@@ -31,51 +30,39 @@ const INTERVALS = [
 
 function MonitorForm({ initial, onSave, onCancel }) {
   const isEdit = !!initial?.id
-  const [form,    setForm]    = useState(initial || { label: '', type: 'http', target: '', port: '', interval_s: 60, keyword: '', expected_status: 200 })
-  const [error,   setError]   = useState('')
+  const [form, setForm] = useState(initial || { label: '', type: 'http', target: '', port: '', interval_s: 60, keyword: '', expected_status: 200 })
+  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const f = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
 
   const submit = async (e) => {
     e.preventDefault(); setError(''); setLoading(true)
     try {
-      const payload = {
-        ...form,
-        interval_s:      parseInt(form.interval_s) || 60,
-        timeout_s:       10,
-        expected_status: parseInt(form.expected_status) || 200,
-        port:            form.port ? parseInt(form.port) : undefined,
-      }
+      const payload = { ...form, interval_s: parseInt(form.interval_s) || 60, timeout_s: 10, expected_status: parseInt(form.expected_status) || 200, port: form.port ? parseInt(form.port) : undefined }
       isEdit ? await api.put(`/monitors/${initial.id}`, payload) : await api.post('/monitors', payload)
       onSave()
-    } catch (err) {
-      setError(err.response?.data?.error || 'Error saving monitor')
-    } finally { setLoading(false) }
+    } catch (err) { setError(err.response?.data?.error || 'Error saving monitor') }
+    finally { setLoading(false) }
   }
 
   return (
     <form onSubmit={submit} autoComplete="off" className="space-y-4">
       {error && <AlertBox type="error">{error}</AlertBox>}
-      <Input label="Name *" autoComplete="off" value={form.label} onChange={f('label')} placeholder="My website" required />
+      <Input label="Name *" autoComplete="off" value={form.label} onChange={f('label')} required />
       <Select label="Type" value={form.type} onChange={f('type')}>
         {MONITOR_TYPES.map(t => <option key={t} value={t}>{t.toUpperCase()}</option>)}
       </Select>
-      <Input
-        label={form.type === 'icmp' ? 'IP address or hostname' : form.type === 'dns' ? 'Domain' : 'URL or IP'}
+      <Input label={form.type === 'icmp' ? 'IP or hostname' : form.type === 'dns' ? 'Domain' : 'URL or IP'}
         autoComplete="off" value={form.target} onChange={f('target')}
-        placeholder={form.type === 'http' ? 'https://example.com' : form.type === 'icmp' ? '192.168.1.1' : 'example.com'}
-        required
-      />
+        placeholder={form.type === 'http' ? 'https://example.com' : form.type === 'icmp' ? '192.168.1.1' : 'example.com'} required />
       {form.type === 'tcp' && <Input label="Port *" type="number" autoComplete="off" value={form.port} onChange={f('port')} required />}
       <Select label="Check interval" value={form.interval_s} onChange={f('interval_s')}>
         {INTERVALS.map(i => <option key={i.value} value={i.value}>{i.label}</option>)}
       </Select>
-      {['http', 'https'].includes(form.type) && (
-        <>
-          <Input label="Keyword check (optional)" autoComplete="off" value={form.keyword || ''} onChange={f('keyword')} placeholder="Text that must appear in response" />
-          <Input label="Expected HTTP status" type="number" autoComplete="off" value={form.expected_status || 200} onChange={f('expected_status')} />
-        </>
-      )}
+      {['http','https'].includes(form.type) && <>
+        <Input label="Keyword check (optional)" autoComplete="off" value={form.keyword || ''} onChange={f('keyword')} placeholder="Text that must appear in response" />
+        <Input label="Expected HTTP status" type="number" autoComplete="off" value={form.expected_status || 200} onChange={f('expected_status')} />
+      </>}
       <div className="flex gap-3 pt-2">
         <Button type="submit" loading={loading}>{isEdit ? 'Save changes' : 'Add monitor'}</Button>
         <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
@@ -84,37 +71,26 @@ function MonitorForm({ initial, onSave, onCancel }) {
   )
 }
 
-// Monitor card — styled exactly like Krajcara-Scan original
 function MonitorCard({ monitor, onEdit, onDelete, canEdit }) {
   const [checks,  setChecks]  = useState([])
   const [status,  setStatus]  = useState(monitor.last_status || 'unknown')
   const [latency, setLatency] = useState(monitor.last_latency_ms)
 
-  const loadChecks = () => {
+  // Load check history on mount
+  useEffect(() => {
     api.get(`/monitors/${monitor.id}/checks?hours=3`)
       .then(r => setChecks(r.data.map(c => ({ t: new Date(c.checked_at).getTime(), v: c.latency_ms || 0 }))))
       .catch(() => {})
-  }
-
-  useEffect(() => {
-    loadChecks()
-    const interval = setInterval(loadChecks, 30000)
-    return () => clearInterval(interval)
   }, [monitor.id])
 
+  // Real-time updates via socket
   useSocket({
     'monitor:status': ({ monitorId, status: s, latency_ms, checked_at }) => {
-      if (monitorId === monitor.id) {
-        setStatus(s)
-        setLatency(latency_ms)
-        // Append new point to sparkline
-        if (latency_ms != null) {
-          setChecks(prev => {
-            const point = { t: checked_at ? new Date(checked_at).getTime() : Date.now(), v: latency_ms }
-            const next = [...prev, point]
-            return next.slice(-120) // keep last 120 points
-          })
-        }
+      if (monitorId !== monitor.id) return
+      setStatus(s)
+      setLatency(latency_ms)
+      if (latency_ms != null) {
+        setChecks(prev => [...prev, { t: checked_at ? new Date(checked_at).getTime() : Date.now(), v: latency_ms }].slice(-120))
       }
     }
   })
@@ -122,54 +98,46 @@ function MonitorCard({ monitor, onEdit, onDelete, canEdit }) {
   const lineColor = status === 'down' ? '#ef4444' : status === 'degraded' ? '#eab308' : '#22c55e'
 
   return (
-    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
-      {/* Header row */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2.5 min-w-0">
+    <Card className="p-4">
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-2.5">
           <span className={cn('w-2.5 h-2.5 rounded-full flex-shrink-0', STATUS_DOT[status])} />
-          <div className="min-w-0">
-            <p className="font-medium text-gray-900 dark:text-white text-sm leading-tight">{monitor.label}</p>
-            <p className="text-xs text-gray-400 font-mono truncate max-w-48 mt-0.5">{monitor.target}</p>
+          <div>
+            <p className="font-medium text-gray-900 dark:text-white text-sm">{monitor.label}</p>
+            <p className="text-xs text-gray-400 font-mono truncate max-w-48">{monitor.target}</p>
           </div>
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-          <Badge className={cn('text-xs font-semibold px-2 py-0.5', STATUS_COLOR[status])}>{status}</Badge>
-          {canEdit && (
-            <>
-              <button onClick={() => onEdit(monitor)} className="p-1.5 text-gray-400 hover:text-brand rounded transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
-              <button onClick={() => onDelete(monitor.id)} className="p-1.5 text-gray-400 hover:text-red-500 rounded transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-            </>
-          )}
+        <div className="flex items-center gap-1">
+          <Badge className={cn('text-xs', STATUS_COLOR[status])}>{status}</Badge>
+          {canEdit && <>
+            <button onClick={() => onEdit(monitor)} className="p-1.5 text-gray-400 hover:text-brand rounded transition-colors"><Pencil className="w-3 h-3" /></button>
+            <button onClick={() => onDelete(monitor.id)} className="p-1.5 text-gray-400 hover:text-red-500 rounded transition-colors"><Trash2 className="w-3 h-3" /></button>
+          </>}
         </div>
       </div>
 
-      {/* Sparkline chart */}
-      <div className="h-10 mb-3">
-        {checks.length >= 2 ? (
+      {/* Chart — only shown when there's data */}
+      {checks.length > 0 && (
+        <div className="h-10 mb-3">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={checks}>
               <Line type="monotone" dataKey="v" stroke={lineColor} dot={false} strokeWidth={1.5} isAnimationActive={false} />
               <Tooltip
-                contentStyle={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, border: 'none', background: '#111827', color: '#f9fafb' }}
+                contentStyle={{ fontSize: 11, padding: '2px 6px', borderRadius: 6, border: 'none', background: '#111827', color: '#f9fafb' }}
                 formatter={v => [`${v}ms`, 'Latency']}
                 labelFormatter={() => ''}
               />
             </LineChart>
           </ResponsiveContainer>
-        ) : (
-          <div className="h-full flex items-end pb-1">
-            <div className="w-full h-px bg-gray-100 dark:bg-gray-800" />
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Footer row */}
       <div className="flex items-center justify-between text-xs text-gray-400">
-        <span className="font-mono">{latency != null ? `${latency}ms` : '—'}</span>
-        <span className="bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded font-mono font-medium">{monitor.type.toUpperCase()}</span>
+        <span>{latency != null ? `${latency}ms` : '—'}</span>
+        <span className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded font-mono">{monitor.type.toUpperCase()}</span>
         <span>{monitor.last_checked_at ? timeAgo(monitor.last_checked_at) : 'Not checked yet'}</span>
       </div>
-    </div>
+    </Card>
   )
 }
 
@@ -223,7 +191,7 @@ export default function MonitorsPage() {
             { label: 'Down',     count: stats.down,     cls: 'text-red-600 dark:text-red-400' },
             { label: 'Degraded', count: stats.degraded, cls: 'text-yellow-600 dark:text-yellow-400' },
           ].map(s => (
-            <div key={s.label} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-4 py-2 text-sm">
+            <div key={s.label} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-4 py-2.5 text-sm">
               <span className="text-gray-500 dark:text-gray-400">{s.label}: </span>
               <span className={cn('font-semibold', s.cls)}>{s.count}</span>
             </div>
