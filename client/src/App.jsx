@@ -18,6 +18,7 @@ import DnsPage           from './pages/DnsPage'
 import ProxmoxPage       from './pages/ProxmoxPage'
 import NetworkScannerPage from './pages/NetworkScannerPage'
 import ScanAutomationPage from './pages/ScanAutomationPage'
+import NetSpeedPage       from './pages/NetSpeedPage'
 
 function ProtectedRoute({ children, roles }) {
   const { isAuthenticated, user } = useAuthStore()
@@ -50,6 +51,7 @@ export default function App() {
           <Route path="proxmox"     element={<ProxmoxPage />} />
           <Route path="scanner"     element={<NetworkScannerPage />} />
           <Route path="automation"  element={<ScanAutomationPage />} />
+          <Route path="netspeed"     element={<NetSpeedPage />} />
           <Route path="users"    element={<ProtectedRoute roles={['superadmin', 'admin']}><UsersPage /></ProtectedRoute>} />
           <Route path="audit"    element={<ProtectedRoute roles={['superadmin', 'admin']}><AuditPage /></ProtectedRoute>} />
           <Route path="settings" element={<ProtectedRoute roles={['superadmin', 'admin']}><SettingsPage /></ProtectedRoute>} />
