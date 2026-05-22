@@ -47,6 +47,12 @@ The updater:
 
 ## Changelog
 
+### Phase 3 — Network
+- **Uptime Monitor** — HTTP, HTTPS, TCP, ICMP and DNS monitors with real-time status via WebSocket; latency sparkline chart per monitor; status badges (up/down/degraded); linked to public Status Page
+- **Routers** — router inventory with brand (MikroTik, Cisco, FortiGate, Ubiquiti, Juniper, HP, Other), model, IP, SNMP v2c/v3 configuration; ping check per router
+- **DNS — Local** — primary and backup DNS server cards (Technitium, Pi-hole, AdGuard Home, BIND9, Windows DNS, Other); online/offline status check; query/blocked/client stats for Technitium and Pi-hole
+- **DNS — External** — domain list with SPF, DMARC, DKIM, MX and A record checks; check individual domain or all at once
+
 ### Phase 2 — Inventory
 - **Licences** — manual entry of software licences and subscriptions
   - Track vendor, licence name, seat count, billing cycle (monthly/annual/perpetual)
@@ -141,7 +147,7 @@ krajcara-admin/
 
 - ✅ **Phase 1** — Foundation: Auth, TOTP, Dashboard, Status Page, Users, Audit Log, Settings, API Keys, Update system
 - ✅ **Phase 2** — Inventory: Licences (manual + Entra ID Apps)
-- **Phase 3** — Network: Uptime Monitor, Routers (SNMP), DNS (Local + External)
+- ✅ **Phase 3** — Network: Uptime Monitor, Routers (SNMP), DNS (Local + External)
 - **Phase 4** — Infrastructure: Proxmox, Network Scanner, Scan Automation
 - **Phase 5** — Advanced: Microsoft 365, Backup & Restore, Reports
 
