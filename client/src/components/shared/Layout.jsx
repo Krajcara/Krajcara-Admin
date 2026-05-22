@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Shield, LogOut, Sun, Moon, Menu, User,
-  Users, Settings, BookOpen, KeyRound
+  Users, Settings, BookOpen, KeyRound, RefreshCw
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useThemeStore } from '../../store/themeStore'
@@ -12,6 +12,8 @@ const NAV_ITEMS = [
   { to: '/',          label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { separator: true,  label: 'Inventory' },
   { to: '/licences',  label: 'Licences',  icon: KeyRound },
+  { separator: true,  label: 'Account' },
+  { to: '/profile',   label: 'Profile',   icon: User },
   { separator: true,  label: 'Admin' },
   { to: '/users',     label: 'Users',     icon: Users,    roles: ['superadmin', 'admin'] },
   { to: '/audit',     label: 'Audit Log', icon: BookOpen, roles: ['superadmin', 'admin'] },
@@ -74,7 +76,8 @@ export default function Layout() {
 
       {/* User footer */}
       <div className="px-3 py-3 border-t border-gray-200 dark:border-gray-800">
-        <div className="flex items-center gap-3 px-2 py-2">
+        <NavLink to="/profile" onClick={() => setOpen(false)}
+          className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group">
           <div className="w-8 h-8 rounded-full bg-brand/10 dark:bg-brand/20 flex items-center justify-center flex-shrink-0">
             <User className="w-4 h-4 text-brand" />
           </div>
@@ -82,10 +85,12 @@ export default function Layout() {
             <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{user?.full_name || user?.username}</p>
             <span className={cn('text-xs px-1.5 py-0.5 rounded font-medium', roleColor(user?.role))}>{user?.role}</span>
           </div>
-          <button onClick={handleLogout} className="p-1.5 text-gray-400 hover:text-red-500 rounded transition-colors" title="Logout">
-            <LogOut className="w-4 h-4" />
-          </button>
-        </div>
+        </NavLink>
+        <button onClick={handleLogout}
+          className="w-full mt-1 flex items-center gap-2 px-2 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+          <LogOut className="w-4 h-4" />
+          Sign out
+        </button>
       </div>
     </div>
   )
