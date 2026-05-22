@@ -219,3 +219,103 @@ db.exec(`
 try {
   db.prepare("DELETE FROM monitor_checks WHERE checked_at < datetime('now', '-7 days')").run();
 } catch {}
+
+// Phase 4 — Infrastructure tables
+db.exec(`
+  CREATE TABLE IF NOT EXISTS scan_hosts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    label       TEXT NOT NULL,
+    target      TEXT NOT NULL,
+    target_type TEXT NOT NULL DEFAULT 'ip',
+    description TEXT,
+    created_at  TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS scans (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    host_id       INTEGER NOT NULL,
+    user_id       INTEGER,
+    status        TEXT NOT NULL DEFAULT 'queued',
+    profile       TEXT DEFAULT 'quick',
+    nmap_args     TEXT,
+    progress      INTEGER DEFAULT 0,
+    error_message TEXT,
+    started_at    TEXT,
+    finished_at   TEXT,
+    created_at    TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (host_id) REFERENCES scan_hosts(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS scan_results (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    scan_id     INTEGER NOT NULL,
+    ip_address  TEXT,
+    hostname    TEXT,
+    mac_address TEXT,
+    os_guess    TEXT,
+    os_accuracy INTEGER,
+    status      TEXT DEFAULT 'up',
+    scanned_at  TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS port_findings (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    result_id   INTEGER NOT NULL,
+    port_number INTEGER,
+    protocol    TEXT DEFAULT 'tcp',
+    state       TEXT DEFAULT 'open',
+    service     TEXT,
+    product     TEXT,
+    version     TEXT,
+    extra_info  TEXT,
+    FOREIGN KEY (result_id) REFERENCES scan_results(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS scan_schedules (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    host_id    INTEGER,
+    user_id    INTEGER,
+    label      TEXT,
+    cron_expr  TEXT NOT NULL,
+    profile    TEXT DEFAULT 'quick',
+    nmap_args  TEXT,
+    enabled    INTEGER DEFAULT 1,
+    last_run   TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (host_id) REFERENCES scan_hosts(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS alert_rules (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    host_id      INTEGER,
+    user_id      INTEGER,
+    label        TEXT,
+    trigger_type TEXT NOT NULL,
+    channels     TEXT DEFAULT '{}',
+    enabled      INTEGER DEFAULT 1,
+    created_at   TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (host_id) REFERENCES scan_hosts(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS scan_alerts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    rule_id         INTEGER,
+    scan_id         INTEGER,
+    type            TEXT NOT NULL,
+    message         TEXT,
+    detail          TEXT,
+    acknowledged    INTEGER DEFAULT 0,
+    acknowledged_by INTEGER,
+    acknowledged_at TEXT,
+    created_at      TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (rule_id) REFERENCES alert_rules(id) ON DELETE SET NULL,
+    FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE SET NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_scans_host    ON scans(host_id);
+  CREATE INDEX IF NOT EXISTS idx_scans_status  ON scans(status);
+  CREATE INDEX IF NOT EXISTS idx_results_scan  ON scan_results(scan_id);
+  CREATE INDEX IF NOT EXISTS idx_ports_result  ON port_findings(result_id);
+  CREATE INDEX IF NOT EXISTS idx_alerts_ack    ON scan_alerts(acknowledged);
+`);
