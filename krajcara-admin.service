@@ -1,0 +1,18 @@
+[Unit]
+Description=Krajcara Admin Web Application
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/krajcara-admin/server
+ExecStart=node /opt/krajcara-admin/server/src/index.js
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=krajcara-admin
+EnvironmentFile=/opt/krajcara-admin/.env
+
+[Install]
+WantedBy=multi-user.target
