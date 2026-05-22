@@ -287,7 +287,18 @@ export default function RoutersPage() {
 
   const load = useCallback(() => {
     setLoading(true)
-    api.get('/routers').then(r => setRouters(r.data)).catch(() => {}).finally(() => setLoading(false))
+    api.get('/routers')
+      .then(r => {
+        setRouters(r.data)
+        // Auto-ping all routers after load
+        r.data.forEach(router => {
+          api.get(`/routers/${router.id}/ping`)
+            .then(res => setPingRes(p => ({ ...p, [router.id]: res.data })))
+            .catch(() => setPingRes(p => ({ ...p, [router.id]: { alive: false } })))
+        })
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
   }, [])
   useEffect(load, [load])
 
