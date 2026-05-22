@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Shield, LogOut, Sun, Moon, Menu, User,
-  Users, Settings, BookOpen, KeyRound, RefreshCw, Activity, Network, Globe
+  Users, Settings, BookOpen, KeyRound, RefreshCw, Activity, Network, Globe,
+  Server, Scan, CalendarClock
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useThemeStore } from '../../store/themeStore'
@@ -18,6 +19,10 @@ const NAV_ITEMS = [
   { to: '/dns',       label: 'DNS',       icon: Globe },
   { separator: true,  label: 'Account' },
   { to: '/profile',   label: 'Profile',   icon: User },
+  { separator: true,  label: 'Infrastructure' },
+  { to: '/proxmox',    label: 'Proxmox',          icon: Server },
+  { to: '/scanner',    label: 'Network Scanner',   icon: Scan },
+  { to: '/automation', label: 'Scan Automation',   icon: CalendarClock },
   { separator: true,  label: 'Admin' },
   { to: '/users',     label: 'Users',     icon: Users,    roles: ['superadmin', 'admin'] },
   { to: '/audit',     label: 'Audit Log', icon: BookOpen, roles: ['superadmin', 'admin'] },
