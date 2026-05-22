@@ -29,6 +29,7 @@ const routersRoutes  = require('./routes/routers');
 const dnsRoutes      = require('./routes/dns');
 const proxmoxRoutes  = require('./routes/proxmox');
 const { router: scannerRouter, initSchedules } = require('./routes/scanner');
+const netspeedRoutes = require('./routes/netspeed');
 
 const app    = express();
 const server = http.createServer(app);
@@ -79,6 +80,7 @@ app.use('/api/routers',     requireAuth, routersRoutes);
 app.use('/api/dns',         requireAuth, dnsRoutes);
 app.use('/api/proxmox',     requireAuth, proxmoxRoutes);
 app.use('/api/scanner',     requireAuth, scannerRouter);
+app.use('/api/netspeed',    requireAuth, netspeedRoutes);
 
 // ── Socket.io ─────────────────────────────────────────────────────
 io.on('connection', (socket) => {
