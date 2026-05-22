@@ -24,13 +24,14 @@ sudo bash install.sh TOKEN
 
 The installer will:
 1. Verify the token against GitHub
-2. Install Node.js 20 LTS (via nvm)
+2. Install Node.js 20 LTS (via nvm) and system packages including `nmap`
 3. Clone the repository to `/opt/krajcara-admin/`
 4. Generate a random admin password and `.env` file (token saved for updates)
-5. Build the frontend
-6. Install and start the systemd service
+5. Install all server dependencies (including `net-snmp` and `xml2js`)
+6. Build the frontend
+7. Install and start the systemd service
 
-After installation, the app is available at `http://SERVER_IP:3000`.  
+After installation, the app is available at `http://SERVER_IP:3000`.
 Admin credentials are printed at the end — you will be asked to change the password on first login.
 
 ## Updating
@@ -39,60 +40,77 @@ Admin credentials are printed at the end — you will be asked to change the pas
 sudo bash /opt/krajcara-admin/update.sh
 ```
 
+Or from within the app: **Settings → System update → Check for updates → Install update**.
+
 The updater:
 1. Reads the GitHub token from `.env` — no token needed as argument
 2. Checks GitHub for a newer release tag; if no releases exist yet, checks for new commits on `main`
 3. If up to date — exits with a message, no changes made
 4. If update available — pulls latest code, reinstalls dependencies, rebuilds frontend, restarts service
+5. The browser page reloads automatically when the server comes back up
 
 ## Changelog
 
+### Phase 3 — Network (update 2)
+- **Net Speed** — MySpeed integration (self-hosted speed test tool)
+  - Configure MySpeed URL and optional password
+  - Download stats: min / avg / max in Mbps
+  - Upload stats: min / avg / max in Mbps
+  - Ping stats: min / avg / max in ms with area chart (last 50 tests)
+  - Download / Upload line chart (last 50 tests)
+  - Recent tests table with download, upload, ping, jitter, type
+  - Run test button triggers a new test on demand
+  - Auto-refresh every 60 seconds, polls every 3s while test is running
+
 ### Phase 4 — Infrastructure
-- **Proxmox** — connect via API token; view nodes, VMs and LXC containers with CPU/RAM/disk usage; start/stop/reboot/shutdown actions; storage overview per node
-- **Network Scanner** — three tabs in one page: Hosts (manage scan targets: IP, subnet, hostname, range), New Scan (6 nmap profiles + custom args, real-time progress via Socket.io), Scan History (paginated, diff view comparing open ports to previous scan)
-- **Scan Automation** — three tabs in one page: Schedules (cron-based automated scans with enable/disable toggle), Alert Rules (trigger on new port / closed port / service change / host up/down / any change, email + webhook channels), Alerts Log (unread filter, acknowledge per alert)
+- **Proxmox** — connect via API token; view nodes, VMs and LXC containers with CPU/RAM/disk usage bars; start/stop/reboot/shutdown actions with confirmation; storage overview per node; nodes, VMs and containers sorted alphabetically
+- **Network Scanner** — three tabs in one page:
+  - *Hosts* — manage scan targets: IP, subnet, hostname, range
+  - *New Scan* — 6 nmap profiles (quick/full/service/stealth/os/custom args), real-time progress via Socket.io, live host results during scan
+  - *Scan History* — paginated history, click any row to expand and see all hosts with open ports table (port, protocol, service, version), diff view comparing open ports to previous scan
+- **Scan Automation** — three tabs in one page:
+  - *Schedules* — cron-based automated scans with preset frequencies and enable/disable toggle
+  - *Alert Rules* — trigger on new port / closed port / service change / host up/down / any change, email and webhook channels
+  - *Alerts Log* — unread filter, acknowledge per alert
 
 ### Phase 3 — Network
-- **Uptime Monitor** — HTTP, HTTPS, TCP, ICMP and DNS monitors with real-time status via WebSocket; latency sparkline chart per monitor; status badges (up/down/degraded); linked to public Status Page
-- **Routers** — router inventory with brand (MikroTik, Cisco, FortiGate, Ubiquiti, Juniper, HP, Other), model, IP, SNMP v2c/v3 configuration; ping check per router
-- **DNS — Local** — primary and backup DNS server cards (Technitium, Pi-hole, AdGuard Home, BIND9, Windows DNS, Other); online/offline status check; query/blocked/client stats for Technitium and Pi-hole
-- **DNS — External** — domain list with SPF, DMARC, DKIM, MX and A record checks; check individual domain or all at once
+- **Uptime Monitor** — HTTP, HTTPS, TCP, ICMP and DNS monitors; real-time status via WebSocket; latency chart per monitor (populates after 2+ checks); monitors sorted alphabetically; linked to public Status Page
+- **Routers** — router inventory with brand (MikroTik, Cisco, FortiGate, Ubiquiti, Juniper, HP, Other), model, IP; SNMP v2c/v3 configuration; auto-ping on page load; expandable SNMP stats panel per router (uptime, CPU %, memory %, WAN interface traffic with RX/TX); configurable stats refresh interval (30s/1min/2min/5min)
+- **DNS — Local** — primary and backup DNS server cards (Technitium, Pi-hole, AdGuard Home, BIND9, Windows DNS); online/offline status; query/blocked/client stats for Technitium and Pi-hole
+- **DNS — Cloudflare** — API token configuration; automatic zone fetch on load; SPF/DKIM/DMARC/MX badges per zone; expandable record details; auto-refresh interval (1/5/15/30 min)
+- **DNS — Manual check** — add domains to monitor, check SPF/DKIM/DMARC/MX/A records on demand or all at once
 
 ### Phase 2 — Inventory
 - **Licences** — manual entry of software licences and subscriptions
-  - Track vendor, licence name, seat count, billing cycle (monthly/annual/perpetual)
+  - Track vendor, licence name, seat count (used/total with usage bar), billing cycle (monthly/annual/perpetual)
   - Price per licence with currency (EUR, USD, RSD, GBP, CHF) and tax %
   - Automatic cost summary per currency (monthly and annual totals)
   - Free/bonus licence tracking with savings calculation
   - Access credentials per licence (URL, username, password, MFA flag)
-  - Expiry tracking with visual warnings (expired / expiring within 30 days)
-  - Renew button — extends expiry by one billing cycle
+  - Expiry tracking with visual warnings; Renew button extends by one billing cycle
   - Sort by name, vendor, expiry, cost
 - **Entra ID Apps** — Azure app registration tracking
   - Application name and Client ID
-  - Client secret storage (masked by default, reveal on demand)
-  - Secret expiry date with colour-coded countdown (green/yellow/red)
-  - Warning banner and tab badge when secrets are expiring or expired
-  - Assigned to (person/team) and project fields
+  - Client secret storage (masked, reveal on demand)
+  - Secret expiry countdown (green/yellow/red); warning banner and tab badge when expiring
 
 ### Phase 1 — Foundation
-- **Login** — username/password authentication with JWT tokens
-- **Two-factor authentication (TOTP)** — Google Authenticator / Authy compatible, with 8 backup codes
+- **Login** — username/password with JWT tokens, rate limited
+- **Two-factor authentication (TOTP)** — Google Authenticator / Authy compatible, 8 backup codes; configure under Profile
 - **First login flow** — forced password change on first login
 - **Dashboard** — overview with recent activity feed
-- **Users** — create, edit, deactivate users; roles: superadmin, admin, operator, viewer
-- **Audit Log** — full log of all actions (create/update/delete/login/logout) with filters and CSV export
-- **Settings** — application name, SMTP email configuration with connection test, data retention days
-- **Profile page** — change password, enable/disable TOTP, manage personal API keys
-- **API Keys** — generate personal tokens (`ka_...`) for programmatic API access (max 10 per user)
+- **Users** — create, edit, deactivate; roles: superadmin, admin, operator, viewer
+- **Audit Log** — full log of all actions with filters (module, action, status, search) and CSV export
+- **Settings** — app name, SMTP config with connection test, data retention, system update
+- **Profile** — change password, enable/disable TOTP, manage personal API keys
+- **API Keys** — personal tokens (`ka_...`) for programmatic access, max 10 per user; in Profile page
 - **Status Page** — public page at `/status` (no login required), auto-refreshes every 30 seconds
-- **Dark mode** — toggle in header, persisted per browser
-- **Update system** — `update.sh` checks GitHub for new commits/releases, pulls and rebuilds automatically
-- **Systemd service** — auto-start on boot, restart on failure
+- **Dark mode** — toggle in header, persisted
+- **Update system** — check GitHub for updates, install and auto-reload from Settings page
 
 ## Configuration
 
-All configuration is done through the **Settings** page inside the application.  
+All configuration is done through the **Settings** page and individual module config modals.
 The `.env` file at `/opt/krajcara-admin/.env` is generated automatically.
 
 Key `.env` variables:
@@ -103,14 +121,15 @@ Key `.env` variables:
 | `APP_SECRET` | JWT signing secret — auto-generated |
 | `DB_PATH` | SQLite database path |
 | `GITHUB_TOKEN` | Token for private repo access (used by updater) |
+| `ADMIN_PASSWORD` | Initial admin password (used only on first run) |
 
 ## Roles
 
 | Role | Permissions |
 |------|-------------|
-| `superadmin` | Full access, can delete users |
-| `admin` | Manage users, settings, audit |
-| `operator` | Access to operational modules (added in later phases) |
+| `superadmin` | Full access, can delete users and all data |
+| `admin` | Manage users, settings, all modules |
+| `operator` | Run scans, manage monitors, read access to modules |
 | `viewer` | Read-only access |
 
 ## Service management
@@ -123,7 +142,7 @@ sudo journalctl -u krajcara-admin -f
 
 ## Data
 
-SQLite database: `/opt/krajcara-admin/data/krajcara-admin.db`  
+SQLite database: `/opt/krajcara-admin/data/krajcara-admin.db`
 Back it up regularly — it contains all application data.
 
 ## Project structure
@@ -133,6 +152,7 @@ krajcara-admin/
 ├── client/              React + Vite frontend
 │   ├── src/
 │   │   ├── components/  Shared UI components (UI.jsx, Layout.jsx)
+│   │   ├── hooks/       useSocket.js
 │   │   ├── pages/       Page components
 │   │   ├── store/       Zustand state (auth, theme)
 │   │   └── lib/         API client, utilities
@@ -140,8 +160,10 @@ krajcara-admin/
 ├── server/              Express.js backend
 │   └── src/
 │       ├── db/          SQLite schema and initialization
+│       ├── lib/         SNMP libs (MikroTik, Cisco, FortiGate, generic)
 │       ├── middleware/  Auth (JWT) and audit logging
-│       └── routes/      API route handlers
+│       ├── routes/      API route handlers
+│       └── services/    Monitor worker, nmap service, scan service
 ├── install.sh           First-time installer (pass token as argument)
 ├── update.sh            Updater — GitHub pull + rebuild + restart
 ├── krajcara-admin.service  systemd service file
@@ -152,7 +174,7 @@ krajcara-admin/
 
 - ✅ **Phase 1** — Foundation: Auth, TOTP, Dashboard, Status Page, Users, Audit Log, Settings, API Keys, Update system
 - ✅ **Phase 2** — Inventory: Licences (manual + Entra ID Apps)
-- ✅ **Phase 3** — Network: Uptime Monitor, Routers (SNMP), DNS (Local + External)
+- ✅ **Phase 3** — Network: Uptime Monitor, Routers (SNMP), DNS (Local + Cloudflare + Manual), Net Speed (MySpeed)
 - ✅ **Phase 4** — Infrastructure: Proxmox, Network Scanner, Scan Automation
 - **Phase 5** — Advanced: Microsoft 365, Backup & Restore, Reports
 
