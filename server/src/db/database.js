@@ -100,3 +100,45 @@ if (userCount.cnt === 0) {
 }
 
 module.exports = db;
+
+// Phase 2 — Licences & Entra Apps tables
+db.exec(`
+  CREATE TABLE IF NOT EXISTS licences (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    vendor             TEXT NOT NULL,
+    licence_type       TEXT NOT NULL,
+    licence_count      INTEGER DEFAULT 1,
+    licence_used       INTEGER DEFAULT 0,
+    purchase_date      TEXT,
+    expiry_date        TEXT,
+    price_per_licence  REAL,
+    currency           TEXT DEFAULT 'EUR',
+    billing_cycle      TEXT DEFAULT 'annual',
+    tax_percent        REAL DEFAULT 0,
+    is_free            INTEGER DEFAULT 0,
+    active_users       INTEGER,
+    assigned_to        TEXT DEFAULT '[]',
+    url                TEXT,
+    licence_username   TEXT,
+    licence_password   TEXT,
+    licence_mfa        INTEGER DEFAULT 0,
+    notes              TEXT,
+    hidden             INTEGER DEFAULT 0,
+    created_at         TEXT DEFAULT (datetime('now')),
+    updated_at         TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS entra_apps (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    app_name       TEXT NOT NULL,
+    app_id         TEXT,
+    client_secret  TEXT,
+    secret_expiry  TEXT,
+    assigned_to    TEXT,
+    project        TEXT,
+    notes          TEXT,
+    hidden         INTEGER DEFAULT 0,
+    created_at     TEXT DEFAULT (datetime('now')),
+    updated_at     TEXT DEFAULT (datetime('now'))
+  );
+`);
