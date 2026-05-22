@@ -90,15 +90,32 @@ function MonitorCard({ monitor, onEdit, onDelete, canEdit }) {
   const [status,  setStatus]  = useState(monitor.last_status || 'unknown')
   const [latency, setLatency] = useState(monitor.last_latency_ms)
 
-  useEffect(() => {
+  const loadChecks = () => {
     api.get(`/monitors/${monitor.id}/checks?hours=3`)
       .then(r => setChecks(r.data.map(c => ({ t: new Date(c.checked_at).getTime(), v: c.latency_ms || 0 }))))
       .catch(() => {})
+  }
+
+  useEffect(() => {
+    loadChecks()
+    const interval = setInterval(loadChecks, 30000)
+    return () => clearInterval(interval)
   }, [monitor.id])
 
   useSocket({
-    'monitor:status': ({ monitorId, status: s, latency_ms }) => {
-      if (monitorId === monitor.id) { setStatus(s); setLatency(latency_ms) }
+    'monitor:status': ({ monitorId, status: s, latency_ms, checked_at }) => {
+      if (monitorId === monitor.id) {
+        setStatus(s)
+        setLatency(latency_ms)
+        // Append new point to sparkline
+        if (latency_ms != null) {
+          setChecks(prev => {
+            const point = { t: checked_at ? new Date(checked_at).getTime() : Date.now(), v: latency_ms }
+            const next = [...prev, point]
+            return next.slice(-120) // keep last 120 points
+          })
+        }
+      }
     }
   })
 
@@ -128,7 +145,7 @@ function MonitorCard({ monitor, onEdit, onDelete, canEdit }) {
 
       {/* Sparkline chart — always show placeholder area to keep consistent card height */}
       <div className="h-10 mb-3">
-        {checks.length > 1 ? (
+        {checks.length >= 1 ? (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={checks}>
               <Line type="monotone" dataKey="v" stroke={lineColor} dot={false} strokeWidth={1.5} isAnimationActive={false} />
