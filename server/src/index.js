@@ -21,7 +21,8 @@ const usersRoutes   = require('./routes/users');
 const settingsRoutes = require('./routes/settings');
 const auditRoutes   = require('./routes/audit');
 const apiKeyRoutes  = require('./routes/api-keys');
-const statusRoutes  = require('./routes/status');
+const statusRoutes   = require('./routes/status');
+const licencesRoutes = require('./routes/licences');
 
 const app    = express();
 const server = http.createServer(app);
@@ -61,6 +62,7 @@ app.use('/api/users',       requireAuth, usersRoutes);
 app.use('/api/settings',    requireAuth, settingsRoutes);
 app.use('/api/audit',       requireAuth, auditRoutes);
 app.use('/api/api-keys',    requireAuth, apiKeyRoutes);
+app.use('/api/licences',   requireAuth, licencesRoutes);
 
 // ── Socket.io ─────────────────────────────────────────────────────
 io.on('connection', (socket) => {
