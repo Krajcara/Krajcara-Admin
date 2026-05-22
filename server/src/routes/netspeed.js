@@ -11,91 +11,63 @@ router.use(requireAuth);
 let testRunning = false;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
 function calcStats(values) {
   const valid = values.filter(v => v != null && !isNaN(v) && v > 0);
   if (!valid.length) return { min: null, avg: null, max: null };
-  const min = Math.min(...valid);
-  const max = Math.max(...valid);
-  const avg = valid.reduce((a, b) => a + b, 0) / valid.length;
   return {
-    min: Math.round(min * 10) / 10,
-    avg: Math.round(avg * 10) / 10,
-    max: Math.round(max * 10) / 10,
+    min: Math.round(Math.min(...valid) * 10) / 10,
+    avg: Math.round((valid.reduce((a, b) => a + b, 0) / valid.length) * 10) / 10,
+    max: Math.round(Math.max(...valid) * 10) / 10,
   };
 }
 
-function runFastCli() {
+function findSpeedtest() {
+  const { execSync } = require('child_process');
+  const candidates = [
+    '/usr/bin/speedtest',
+    '/usr/local/bin/speedtest',
+    '/usr/bin/speedtest-cli',
+    '/usr/local/bin/speedtest-cli',
+  ];
+  for (const p of candidates) {
+    try { execSync(`test -x ${p}`, { timeout: 1000 }); return p; } catch {}
+  }
+  try {
+    const found = execSync('which speedtest || which speedtest-cli 2>/dev/null', { timeout: 3000 }).toString().trim().split('\n')[0].trim();
+    if (found) return found;
+  } catch {}
+  return null;
+}
+
+function runSpeedtest() {
   return new Promise((resolve, reject) => {
-    // fast-cli with --upload flag and JSON output
-    // fast --upload --json outputs: {"downloadSpeed":X,"uploadSpeed":Y,"ping":Z,"downloaded":N,"latency":M,"bufferBloat":B,"userLocation":"...","userIp":"..."}
-    // Locate fast binary — try known paths before giving up
-    const { execSync: es } = require('child_process');
-    const KNOWN_PATHS = [
-      '/usr/local/bin/fast',
-      '/usr/bin/fast',
-    ];
-    let fastBin = process.env.FAST_CLI_PATH || null;
-
-    if (!fastBin) {
-      // 1. Check known symlink locations
-      for (const p of KNOWN_PATHS) {
-        try { es(`test -x ${p}`, { timeout: 1000 }); fastBin = p; break; } catch {}
-      }
-    }
-    if (!fastBin) {
-      // 2. Search nvm bin dirs and npm global dirs (-type f,l to catch symlinks too)
-      try {
-        const found = es(
-          'find /root/.nvm/versions/node/*/bin /root/.npm-global/bin /usr/local/lib/node_modules/.bin -maxdepth 1 -name "fast" 2>/dev/null | head -1',
-          { timeout: 5000 }
-        ).toString().trim();
-        if (found) fastBin = found;
-      } catch {}
-    }
-    if (!fastBin) {
-      // 3. Last resort: which
-      try { fastBin = es('which fast 2>/dev/null', { timeout: 2000 }).toString().trim(); } catch {}
-    }
-    if (!fastBin) {
-      throw new Error('fast-cli not found. Run: sudo npm install -g fast-cli && sudo ln -sf $(which fast || find /root/.nvm -name fast -type f | head -1) /usr/local/bin/fast');
+    const bin = findSpeedtest();
+    if (!bin) {
+      return reject(new Error(
+        'speedtest not found. Install: sudo apt-get install -y speedtest-cli'
+      ));
     }
 
-    const cmd = `${fastBin} --upload --json`;
-
-    exec(cmd, { timeout: 120000, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+    // --json gives structured output with download/upload in bits/s and ping in ms
+    exec(`${bin} --json --timeout 60`, { timeout: 120000 }, (err, stdout, stderr) => {
       if (err && !stdout) {
-        return reject(new Error(`fast-cli failed: ${err.message}`));
+        return reject(new Error(`speedtest-cli failed: ${err.message}`));
       }
 
       const raw = (stdout || '').trim();
-      if (!raw) return reject(new Error('fast-cli returned no output'));
+      if (!raw) return reject(new Error('speedtest-cli returned no output'));
 
       try {
-        // fast --json can return multiple JSON objects or a single one
-        // Try to parse the last complete JSON object
-        const jsonMatches = raw.match(/\{[^{}]+\}/g);
-        if (!jsonMatches?.length) throw new Error('No JSON in output');
-
-        // Use the last (most complete) result
-        const data = JSON.parse(jsonMatches[jsonMatches.length - 1]);
-
-        const download = parseFloat(data.downloadSpeed) || null;
-        const upload   = parseFloat(data.uploadSpeed)   || null;
-        const ping     = parseFloat(data.latency || data.ping) || null;
-
+        const data = JSON.parse(raw);
+        // speedtest-cli returns bits/s — convert to Mbps
+        const download = data.download ? Math.round((data.download / 1_000_000) * 10) / 10 : null;
+        const upload   = data.upload   ? Math.round((data.upload   / 1_000_000) * 10) / 10 : null;
+        const ping     = data.ping     ? Math.round(data.ping * 10) / 10 : null;
+        const server   = data.server   ? `${data.server.name}, ${data.server.country}` : 'Ookla';
         if (!download) throw new Error('Could not parse download speed');
-
-        resolve({ download, upload, ping, server: data.userLocation || 'fast.com' });
+        resolve({ download, upload, ping, server });
       } catch (parseErr) {
-        // Fallback: try to parse plain text output
-        // fast plain text: "X Mbps\nX Mbps upload"
-        const dlMatch  = raw.match(/^([\d.]+)\s*Mbps/im);
-        const ulMatch  = raw.match(/^([\d.]+)\s*Mbps\s+upload/im);
-        const download = dlMatch ? parseFloat(dlMatch[1]) : null;
-        const upload   = ulMatch ? parseFloat(ulMatch[1]) : null;
-        if (!download) return reject(new Error('Could not parse fast-cli output: ' + raw.slice(0, 200)));
-        resolve({ download, upload, ping: null, server: 'fast.com' });
+        reject(new Error('Could not parse speedtest output: ' + raw.slice(0, 200)));
       }
     });
   });
@@ -105,7 +77,6 @@ async function executeTest(triggeredBy = 'manual') {
   if (testRunning) throw new Error('A test is already running');
   testRunning = true;
 
-  // Insert a 'running' row so UI can show progress
   const row = db.prepare(
     "INSERT INTO speed_tests (status, triggered_by, created_at) VALUES ('running', ?, datetime('now'))"
   ).run(triggeredBy);
@@ -115,11 +86,10 @@ async function executeTest(triggeredBy = 'manual') {
   if (io) io.emit('netspeed:started', { id });
 
   try {
-    const result = await runFastCli();
-
-    db.prepare(`
-      UPDATE speed_tests SET status='done', download=?, upload=?, ping=?, server=? WHERE id=?
-    `).run(result.download, result.upload ?? null, result.ping ?? null, result.server, id);
+    const result = await runSpeedtest();
+    db.prepare(
+      "UPDATE speed_tests SET status='done', download=?, upload=?, ping=?, server=? WHERE id=?"
+    ).run(result.download, result.upload ?? null, result.ping ?? null, result.server, id);
 
     const saved = db.prepare('SELECT * FROM speed_tests WHERE id = ?').get(id);
     if (io) io.emit('netspeed:done', { test: saved });
@@ -144,19 +114,17 @@ router.get('/tests', (req, res) => {
   res.json(tests);
 });
 
-// GET /api/netspeed/stats — min/avg/max for download, upload, ping
+// GET /api/netspeed/stats?days=30
 router.get('/stats', (req, res) => {
-  const days = parseInt(req.query.days) || 30;
+  const days  = parseInt(req.query.days) || 30;
   const since = new Date(Date.now() - days * 86400000)
     .toISOString().replace('T', ' ').substring(0, 19);
-
   const tests = db.prepare(
-    "SELECT download, upload, ping FROM speed_tests WHERE status='done' AND created_at >= ? ORDER BY created_at DESC"
+    "SELECT download, upload, ping FROM speed_tests WHERE status='done' AND created_at >= ?"
   ).all(since);
-
   res.json({
     days,
-    count: tests.length,
+    count:    tests.length,
     download: calcStats(tests.map(t => t.download)),
     upload:   calcStats(tests.map(t => t.upload)),
     ping:     calcStats(tests.map(t => t.ping)),
@@ -165,25 +133,16 @@ router.get('/stats', (req, res) => {
 
 // GET /api/netspeed/status
 router.get('/status', (req, res) => {
-  const latest = db.prepare("SELECT * FROM speed_tests ORDER BY created_at DESC LIMIT 1").get();
-  res.json({
-    running:    testRunning,
-    last_test:  latest || null,
-  });
+  const latest = db.prepare('SELECT * FROM speed_tests ORDER BY created_at DESC LIMIT 1').get();
+  res.json({ running: testRunning, last_test: latest || null });
 });
 
 // POST /api/netspeed/run
 router.post('/run', requireRole('superadmin', 'admin', 'operator'), async (req, res) => {
   if (testRunning) return res.status(409).json({ error: 'A test is already running' });
-
-  // Respond immediately, test runs in background
   res.json({ ok: true, message: 'Speed test started' });
-
-  try {
-    await executeTest('manual');
-  } catch (err) {
-    console.error('[NetSpeed] Test error:', err.message);
-  }
+  try { await executeTest('manual'); }
+  catch (err) { console.error('[NetSpeed] Test error:', err.message); }
 });
 
 // DELETE /api/netspeed/tests/:id
@@ -193,14 +152,9 @@ router.delete('/tests/:id', requireRole('superadmin', 'admin'), (req, res) => {
   res.json({ ok: true });
 });
 
-// Scheduled auto-run (called from scheduler.js)
 async function runScheduledTest() {
-  try {
-    await executeTest('auto');
-    console.log('[NetSpeed] Scheduled test complete');
-  } catch (err) {
-    console.error('[NetSpeed] Scheduled test error:', err.message);
-  }
+  try { await executeTest('auto'); console.log('[NetSpeed] Scheduled test complete'); }
+  catch (err) { console.error('[NetSpeed] Scheduled test error:', err.message); }
 }
 
 module.exports = { router, runScheduledTest };
