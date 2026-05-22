@@ -2,20 +2,20 @@ import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Shield, LogOut, Sun, Moon, Menu, User,
-  Users, Settings, BookOpen, Key
+  Users, Settings, BookOpen, KeyRound
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useThemeStore } from '../../store/themeStore'
 import { cn, roleColor } from '../../lib/utils'
 
 const NAV_ITEMS = [
-  { to: '/',         label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { separator: true },
-  // Future phases will add items here
-  { separator: true },
-  { to: '/users',    label: 'Users',     icon: Users,    roles: ['superadmin', 'admin'] },
-  { to: '/audit',    label: 'Audit Log', icon: BookOpen, roles: ['superadmin', 'admin'] },
-  { to: '/settings', label: 'Settings',  icon: Settings, roles: ['superadmin', 'admin'] },
+  { to: '/',          label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { separator: true,  label: 'Inventory' },
+  { to: '/licences',  label: 'Licences',  icon: KeyRound },
+  { separator: true,  label: 'Admin' },
+  { to: '/users',     label: 'Users',     icon: Users,    roles: ['superadmin', 'admin'] },
+  { to: '/audit',     label: 'Audit Log', icon: BookOpen, roles: ['superadmin', 'admin'] },
+  { to: '/settings',  label: 'Settings',  icon: Settings, roles: ['superadmin', 'admin'] },
 ]
 
 export default function Layout() {
