@@ -24,6 +24,9 @@ const apiKeyRoutes  = require('./routes/api-keys');
 const statusRoutes   = require('./routes/status');
 const licencesRoutes = require('./routes/licences');
 const updateRoutes   = require('./routes/update');
+const monitorsRoutes = require('./routes/monitors');
+const routersRoutes  = require('./routes/routers');
+const dnsRoutes      = require('./routes/dns');
 
 const app    = express();
 const server = http.createServer(app);
@@ -57,14 +60,18 @@ app.use('/api/auth',        authRoutes);
 app.use('/api/totp',        totpRoutes);
 app.get('/api/settings/app', settingsRoutes);
 app.use('/api/status',      statusRoutes);
+app.get('/api/monitors/public', (req, res) => monitorsRoutes.handle ? monitorsRoutes.handle(req, res) : require('./routes/monitors').handle?.(req,res));
 
 // ── Protected routes ──────────────────────────────────────────────
 app.use('/api/users',       requireAuth, usersRoutes);
 app.use('/api/settings',    requireAuth, settingsRoutes);
 app.use('/api/audit',       requireAuth, auditRoutes);
 app.use('/api/api-keys',    requireAuth, apiKeyRoutes);
-app.use('/api/licences',   requireAuth, licencesRoutes);
-app.use('/api/update',    requireAuth, updateRoutes);
+app.use('/api/licences',    requireAuth, licencesRoutes);
+app.use('/api/update',      requireAuth, updateRoutes);
+app.use('/api/monitors',    requireAuth, monitorsRoutes);
+app.use('/api/routers',     requireAuth, routersRoutes);
+app.use('/api/dns',         requireAuth, dnsRoutes);
 
 // ── Socket.io ─────────────────────────────────────────────────────
 io.on('connection', (socket) => {
