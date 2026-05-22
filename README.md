@@ -27,7 +27,8 @@ The installer will:
 2. Install Node.js 20 LTS (via nvm) and system packages including `nmap`
 3. Clone the repository to `/opt/krajcara-admin/`
 4. Generate a random admin password and `.env` file (token saved for updates)
-5. Install all server dependencies (including `net-snmp` and `xml2js`)
+5. Install all server dependencies (including `net-snmp`, `xml2js`)
+6. Install `fast-cli` globally for speed tests
 6. Build the frontend
 7. Install and start the systemd service
 
@@ -52,15 +53,15 @@ The updater:
 ## Changelog
 
 ### Phase 3 — Network (update 2)
-- **Net Speed** — MySpeed integration (self-hosted speed test tool)
-  - Configure MySpeed URL and optional password
-  - Download stats: min / avg / max in Mbps
+- **Net Speed** — built-in internet speed testing via fast.com (Netflix)
+  - Tests run automatically every hour via cron, and on demand with "Run test" button
+  - Download stats: min / avg / max in Mbps (configurable period: 7/14/30/90 days)
   - Upload stats: min / avg / max in Mbps
-  - Ping stats: min / avg / max in ms with area chart (last 50 tests)
-  - Download / Upload line chart (last 50 tests)
-  - Recent tests table with download, upload, ping, jitter, type
-  - Run test button triggers a new test on demand
-  - Auto-refresh every 60 seconds, polls every 3s while test is running
+  - Ping stats: min / avg / max in ms
+  - Ping area chart (last 40 tests)
+  - Test history table with download, upload, ping, triggered by (auto/manual), status
+  - Real-time status via Socket.io — running indicator while test is in progress
+  - Requires: `npm install -g fast-cli` (done automatically by installer)
 
 ### Phase 4 — Infrastructure
 - **Proxmox** — connect via API token; view nodes, VMs and LXC containers with CPU/RAM/disk usage bars; start/stop/reboot/shutdown actions with confirmation; storage overview per node; nodes, VMs and containers sorted alphabetically
