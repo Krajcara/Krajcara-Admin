@@ -139,6 +139,9 @@ export default function NetworkScannerPage() {
   const [hostFilter,setHostFilter]= useState('')
   const [loading,   setLoading]   = useState(true)
   const [modal,     setModal]     = useState(null)
+  const [expandedScans, setExpandedScans] = useState({})
+  const [scanDetails,   setScanDetails]   = useState({})
+  const [loadingDetail, setLoadingDetail] = useState({})
   const [delTarget, setDelTarget] = useState(null)
   // Scan form state
   const [scanHostId,   setScanHostId]   = useState('')
@@ -171,6 +174,21 @@ export default function NetworkScannerPage() {
 
   useEffect(() => { loadHosts() }, [loadHosts])
   useEffect(() => { if (tab === 'history') loadScans() }, [tab, loadScans])
+
+  const toggleScanDetail = async (scanId) => {
+    if (expandedScans[scanId]) {
+      setExpandedScans(p => ({ ...p, [scanId]: false }))
+      return
+    }
+    setExpandedScans(p => ({ ...p, [scanId]: true }))
+    if (scanDetails[scanId]) return // already loaded
+    setLoadingDetail(p => ({ ...p, [scanId]: true }))
+    try {
+      const r = await api.get(`/scanner/scans/${scanId}`)
+      setScanDetails(p => ({ ...p, [scanId]: r.data }))
+    } catch {}
+    finally { setLoadingDetail(p => ({ ...p, [scanId]: false })) }
+  }
 
   const startScan = async () => {
     if (!scanHostId) return setScanError('Please select a host')
@@ -344,21 +362,87 @@ export default function NetworkScannerPage() {
                   </tr></thead>
                   <tbody>
                     {scans.map(s => (
-                      <tr key={s.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                        <Td>
-                          <p className="font-medium text-gray-900 dark:text-white">{s.host_label}</p>
-                          <p className="text-xs font-mono text-gray-400">{s.host_target}</p>
-                        </Td>
-                        <Td className="text-xs">{formatDate(s.finished_at)}</Td>
-                        <Td className="text-xs text-gray-500">{fmtDuration(s.started_at, s.finished_at)}</Td>
-                        <Td><Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs">{s.profile}</Badge></Td>
-                        <Td><Badge className={cn('text-xs', STATUS_COLOR[s.status] || '')}>{s.status}</Badge></Td>
-                        <Td>
-                          <div className="flex items-center justify-end gap-1">
-                            <button onClick={() => loadDiff(s.id)} className="p-1.5 text-gray-400 hover:text-brand rounded transition-colors" title="Diff"><GitCompare className="w-3.5 h-3.5" /></button>
-                          </div>
-                        </Td>
-                      </tr>
+                      <>
+                        <tr key={s.id}
+                          className="hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer"
+                          onClick={() => toggleScanDetail(s.id)}>
+                          <Td>
+                            <div className="flex items-center gap-2">
+                              {expandedScans[s.id]
+                                ? <ChevronUp className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                                : <ChevronDown className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />}
+                              <div>
+                                <p className="font-medium text-gray-900 dark:text-white">{s.host_label}</p>
+                                <p className="text-xs font-mono text-gray-400">{s.host_target}</p>
+                              </div>
+                            </div>
+                          </Td>
+                          <Td className="text-xs">{formatDate(s.finished_at)}</Td>
+                          <Td className="text-xs text-gray-500">{fmtDuration(s.started_at, s.finished_at)}</Td>
+                          <Td><Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs">{s.profile}</Badge></Td>
+                          <Td><Badge className={cn('text-xs', STATUS_COLOR[s.status] || '')}>{s.status}</Badge></Td>
+                          <Td>
+                            <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+                              <button onClick={() => loadDiff(s.id)} className="p-1.5 text-gray-400 hover:text-brand rounded transition-colors" title="Diff"><GitCompare className="w-3.5 h-3.5" /></button>
+                            </div>
+                          </Td>
+                        </tr>
+                        {expandedScans[s.id] && (
+                          <tr key={`${s.id}-detail`}>
+                            <td colSpan={6} className="px-4 py-0 bg-gray-50/50 dark:bg-gray-800/20">
+                              {loadingDetail[s.id]
+                                ? <div className="py-4 flex justify-center"><Spinner className="w-4 h-4" /></div>
+                                : scanDetails[s.id]?.results?.length > 0
+                                  ? (
+                                    <div className="py-3 space-y-2">
+                                      {scanDetails[s.id].results.map((r, ri) => {
+                                        const openPorts = (r.ports || []).filter(p => p.state === 'open')
+                                        return (
+                                          <div key={ri} className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                                            <div className="flex items-center gap-2 mb-2">
+                                              <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 text-xs">up</Badge>
+                                              <span className="font-mono text-sm font-semibold text-gray-900 dark:text-white">{r.ip_address}</span>
+                                              {r.hostname && <span className="text-xs text-gray-400">({r.hostname})</span>}
+                                              {r.os_guess && <span className="text-xs text-gray-400 italic">{r.os_guess}</span>}
+                                              <span className="text-xs text-gray-400 ml-auto">{openPorts.length} open port{openPorts.length !== 1 ? 's' : ''}</span>
+                                            </div>
+                                            {openPorts.length > 0 ? (
+                                              <div className="overflow-x-auto">
+                                                <table className="w-full text-xs">
+                                                  <thead>
+                                                    <tr className="text-gray-400 border-b border-gray-100 dark:border-gray-800">
+                                                      <th className="text-left py-1 pr-4 font-medium">Port</th>
+                                                      <th className="text-left py-1 pr-4 font-medium">Protocol</th>
+                                                      <th className="text-left py-1 pr-4 font-medium">Service</th>
+                                                      <th className="text-left py-1 font-medium">Version</th>
+                                                    </tr>
+                                                  </thead>
+                                                  <tbody>
+                                                    {openPorts.map((p, pi) => (
+                                                      <tr key={pi} className="border-b border-gray-50 dark:border-gray-800/50 last:border-0">
+                                                        <td className="py-1 pr-4 font-mono font-semibold text-brand">{p.port_number}</td>
+                                                        <td className="py-1 pr-4 text-gray-500">{p.protocol}</td>
+                                                        <td className="py-1 pr-4 text-gray-700 dark:text-gray-300">{p.service || '—'}</td>
+                                                        <td className="py-1 text-gray-400 truncate max-w-48">{[p.product, p.version].filter(Boolean).join(' ') || '—'}</td>
+                                                      </tr>
+                                                    ))}
+                                                  </tbody>
+                                                </table>
+                                              </div>
+                                            ) : (
+                                              <p className="text-xs text-gray-400">No open ports found</p>
+                                            )}
+                                          </div>
+                                        )
+                                      })}
+                                    </div>
+                                  )
+                                  : <p className="py-3 text-xs text-gray-400 text-center">No results found for this scan</p>
+                              }
+                            </td>
+                          </tr>
+                        )}
+                      </>
                     ))}
                   </tbody>
                 </Table>
