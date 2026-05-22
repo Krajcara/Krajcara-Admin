@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Save, TestTube, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react'
 import api from '../lib/api'
 import { useAuthStore } from '../store/authStore'
+import { useSocket } from '../hooks/useSocket'
 import { Card, CardHeader, CardTitle, CardContent, Button, Input, AlertBox, Spinner } from '../components/shared/UI'
 
 function SettingsSection({ title, children }) {
@@ -17,12 +18,60 @@ function SettingsSection({ title, children }) {
 function UpdateSection() {
   const [checking,  setChecking]  = useState(false)
   const [updating,  setUpdating]  = useState(false)
-  const [info,      setInfo]      = useState(null)  // result from /check
-  const [message,   setMessage]   = useState(null)  // { type, text }
+  const [info,      setInfo]      = useState(null)
+  const [phase,     setPhase]     = useState('idle')   // idle | running | waiting | done | error
+  const [message,   setMessage]   = useState(null)
+  const pollRef = useRef(null)
+  const pollCount = useRef(0)
+
+  // Listen for server-pushed update event
+  useSocket({
+    'system:updating': ({ message: msg }) => {
+      setPhase('waiting')
+      setMessage({ type: 'info', text: msg || 'Update in progress. Waiting for server to restart...' })
+      startPolling()
+    }
+  })
+
+  const stopPolling = () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+    pollCount.current = 0
+  }
+
+  const startPolling = () => {
+    stopPolling()
+    pollCount.current = 0
+    // Wait 10s before first check (service needs time to go down and come back)
+    setTimeout(() => {
+      pollRef.current = setInterval(async () => {
+        pollCount.current++
+        try {
+          await api.get('/health', { timeout: 5000 })
+          // Server responded — update complete
+          stopPolling()
+          setPhase('done')
+          setUpdating(false)
+          setInfo(null)
+          setMessage({ type: 'success', text: 'Update complete! Page will reload in 3 seconds...' })
+          setTimeout(() => window.location.reload(), 3000)
+        } catch {
+          // Still down — keep polling
+          if (pollCount.current > 40) {
+            // ~3.5 minutes total, give up
+            stopPolling()
+            setPhase('error')
+            setUpdating(false)
+            setMessage({ type: 'error', text: 'Update timed out. Check server logs: sudo journalctl -u krajcara-admin -n 50' })
+          }
+        }
+      }, 5000)
+    }, 10000)
+  }
+
+  useEffect(() => () => stopPolling(), [])
 
   const check = async () => {
-    setChecking(true)
-    setMessage(null)
+    setChecking(true); setMessage(null)
     try {
       const r = await api.get('/update/check')
       setInfo(r.data)
@@ -32,27 +81,40 @@ function UpdateSection() {
   }
 
   const runUpdate = async () => {
-    setUpdating(true)
-    setMessage(null)
+    setUpdating(true); setMessage(null); setPhase('running')
     try {
-      const r = await api.post('/update/run')
-      setMessage({ type: 'success', text: r.data.message })
+      await api.post('/update/run')
+      setMessage({ type: 'info', text: 'Update started. Waiting for the server to restart...' })
       setInfo(null)
+      // Start polling in case Socket.io event is missed (server restarts before emit)
+      setTimeout(startPolling, 5000)
     } catch (err) {
+      setPhase('error'); setUpdating(false)
       setMessage({ type: 'error', text: err.response?.data?.error || 'Update failed' })
-    } finally { setUpdating(false) }
+    }
   }
+
+  const isActive = phase === 'running' || phase === 'waiting'
 
   return (
     <SettingsSection title="System update">
       <div className="space-y-4 max-w-lg">
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          Check GitHub for new commits. If an update is available, it will pull the latest code, rebuild the frontend and restart the service automatically.
+          Check GitHub for new commits. If an update is available, the server will pull the latest code, rebuild the frontend and restart automatically.
         </p>
 
-        {message && <AlertBox type={message.type}>{message.text}</AlertBox>}
+        {message && (
+          <AlertBox type={message.type}>
+            <div className="flex items-center gap-2">
+              {isActive && <RefreshCw className="w-4 h-4 animate-spin flex-shrink-0" />}
+              {phase === 'done' && <CheckCircle className="w-4 h-4 flex-shrink-0 text-green-500" />}
+              {phase === 'error' && <AlertCircle className="w-4 h-4 flex-shrink-0" />}
+              <span>{message.text}</span>
+            </div>
+          </AlertBox>
+        )}
 
-        {info && (
+        {info && !isActive && (
           <div className={`rounded-lg border px-4 py-3 text-sm flex items-start gap-3 ${
             info.up_to_date
               ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
@@ -62,35 +124,39 @@ function UpdateSection() {
               ? <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
               : <AlertCircle className="w-4 h-4 text-yellow-500 flex-shrink-0 mt-0.5" />}
             <div>
-              {info.up_to_date
-                ? <p className="text-green-700 dark:text-green-300 font-medium">Already up to date</p>
-                : <p className="text-yellow-700 dark:text-yellow-300 font-medium">Update available</p>}
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 font-mono">
-                Installed: {info.local_sha}
-                {!info.up_to_date && <> → Latest: {info.remote_sha}</>}
+              <p className={`font-medium ${info.up_to_date ? 'text-green-700 dark:text-green-300' : 'text-yellow-700 dark:text-yellow-300'}`}>
+                {info.up_to_date ? 'Already up to date' : 'Update available'}
               </p>
-              {info.current_version && (
-                <p className="text-xs text-gray-400 mt-0.5">Version: {info.current_version}</p>
-              )}
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 font-mono">
+                Installed: {info.local_sha}{!info.up_to_date && <> → Latest: {info.remote_sha}</>}
+              </p>
+              {info.current_version && <p className="text-xs text-gray-400 mt-0.5">Version: {info.current_version}</p>}
             </div>
           </div>
         )}
 
-        <div className="flex gap-2">
-          <Button variant="secondary" loading={checking} onClick={check}>
-            <RefreshCw className="w-4 h-4" />
-            Check for updates
-          </Button>
-          {info && !info.up_to_date && (
-            <Button loading={updating} onClick={runUpdate}>
-              <RefreshCw className="w-4 h-4" />
-              Install update
+        {!isActive && phase !== 'done' && (
+          <div className="flex gap-2">
+            <Button variant="secondary" loading={checking} onClick={check}>
+              <RefreshCw className="w-4 h-4" />Check for updates
             </Button>
-          )}
-        </div>
+            {info && !info.up_to_date && (
+              <Button loading={updating} onClick={runUpdate}>
+                <RefreshCw className="w-4 h-4" />Install update
+              </Button>
+            )}
+          </div>
+        )}
+
+        {isActive && (
+          <div className="text-sm text-gray-500 dark:text-gray-400 space-y-1">
+            <p>The server will restart automatically. This page will reload when the update is complete.</p>
+            <p className="text-xs font-mono">Polling for server... ({pollCount.current} attempts)</p>
+          </div>
+        )}
 
         <p className="text-xs text-gray-400">
-          You can also update manually via SSH: <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded font-mono">sudo bash /opt/krajcara-admin/update.sh</code>
+          Manual: <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded font-mono">sudo bash /opt/krajcara-admin/update.sh</code>
         </p>
       </div>
     </SettingsSection>
@@ -114,12 +180,10 @@ export default function SettingsPage() {
   const save = async (keys) => {
     setSaving(true); setStatus(null)
     try {
-      const payload = Object.fromEntries(keys.map(k => [k, settings[k] ?? '']))
-      await api.post('/settings/save', payload)
+      await api.post('/settings/save', Object.fromEntries(keys.map(k => [k, settings[k] ?? ''])))
       setStatus({ type: 'success', message: 'Settings saved' })
-    } catch {
-      setStatus({ type: 'error', message: 'Failed to save settings' })
-    } finally { setSaving(false) }
+    } catch { setStatus({ type: 'error', message: 'Failed to save settings' }) }
+    finally { setSaving(false) }
   }
 
   const testSmtp = async () => {
@@ -146,7 +210,6 @@ export default function SettingsPage() {
 
       {status && <AlertBox type={status.type}>{status.message}</AlertBox>}
 
-      {/* General */}
       <SettingsSection title="General">
         <div className="space-y-4 max-w-lg">
           <Input label="Application name" autoComplete="off" value={settings.app_name || ''} onChange={f('app_name')} />
@@ -155,7 +218,6 @@ export default function SettingsPage() {
         </div>
       </SettingsSection>
 
-      {/* SMTP */}
       <SettingsSection title="Email (SMTP)">
         <div className="space-y-4 max-w-lg">
           <div className="grid grid-cols-2 gap-4">
@@ -169,13 +231,12 @@ export default function SettingsPage() {
             placeholder={settings.smtp_pass === '***' ? '(saved)' : ''} />
           <Input label="From address" autoComplete="off" value={settings.smtp_from || ''} onChange={f('smtp_from')} placeholder="Krajcara Admin <noreply@example.com>" />
           <div className="flex gap-2">
-            <Button loading={saving} onClick={() => save(['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from', 'smtp_secure'])}><Save className="w-4 h-4" />Save</Button>
+            <Button loading={saving} onClick={() => save(['smtp_host','smtp_port','smtp_user','smtp_pass','smtp_from','smtp_secure'])}><Save className="w-4 h-4" />Save</Button>
             <Button variant="secondary" loading={testing} onClick={testSmtp}><TestTube className="w-4 h-4" />Test connection</Button>
           </div>
         </div>
       </SettingsSection>
 
-      {/* Retention */}
       <SettingsSection title="Data retention">
         <div className="space-y-4 max-w-lg">
           <Input label="Audit log retention (days)" type="number" autoComplete="off" value={settings.audit_retention_days || '365'} onChange={f('audit_retention_days')} />
@@ -183,7 +244,6 @@ export default function SettingsPage() {
         </div>
       </SettingsSection>
 
-      {/* Update — only for superadmin/admin */}
       {(user?.role === 'superadmin' || user?.role === 'admin') && <UpdateSection />}
     </div>
   )
