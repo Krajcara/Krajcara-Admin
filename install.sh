@@ -76,7 +76,7 @@ info "OS: $OS $OS_VER"
 # ─── Install system packages ──────────────────────────────────────────────────
 info "Installing system packages..."
 apt-get update -qq
-apt-get install -y curl git ca-certificates gnupg openssl nmap 2>&1 | tail -3
+apt-get install -y curl git ca-certificates gnupg openssl nmap speedtest-cli 2>&1 | tail -3
 success "System packages ready"
 
 # ─── Install Node.js ──────────────────────────────────────────────────────────
@@ -156,17 +156,6 @@ info "Installing server dependencies..."
 cd "$INSTALL_DIR/server"
 unset NODE_ENV
 npm install 2>&1 | tail -8
-
-info "Installing fast-cli globally..."
-npm install -g fast-cli 2>&1 | tail -3
-# Create symlink so fast is accessible system-wide
-FAST_BIN=$(find /root/.nvm/versions/node/*/bin -maxdepth 1 -name "fast" 2>/dev/null | head -1)
-if [ -n "$FAST_BIN" ]; then
-  ln -sf "$FAST_BIN" /usr/local/bin/fast
-  success "fast-cli installed → /usr/local/bin/fast"
-else
-  warn "fast-cli binary not found — speed tests may not work"
-fi
 
 info "Installing client dependencies..."
 cd "$INSTALL_DIR/client"
