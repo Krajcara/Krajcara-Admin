@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Shield, LogOut, Sun, Moon, Menu, User,
-  Users, Settings, BookOpen, KeyRound, RefreshCw
+  Users, Settings, BookOpen, KeyRound, RefreshCw, Activity, Network, Globe
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useThemeStore } from '../../store/themeStore'
@@ -12,6 +12,10 @@ const NAV_ITEMS = [
   { to: '/',          label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { separator: true,  label: 'Inventory' },
   { to: '/licences',  label: 'Licences',  icon: KeyRound },
+  { separator: true,  label: 'Network' },
+  { to: '/monitors',  label: 'Uptime Monitor', icon: Activity },
+  { to: '/routers',   label: 'Routers',   icon: Network },
+  { to: '/dns',       label: 'DNS',       icon: Globe },
   { separator: true,  label: 'Account' },
   { to: '/profile',   label: 'Profile',   icon: User },
   { separator: true,  label: 'Admin' },
