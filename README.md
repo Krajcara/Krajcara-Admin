@@ -193,6 +193,20 @@ krajcara-admin/
 - ✅ **Phase 4** — Infrastructure: Proxmox, Network Scanner, Scan Automation
 - ✅ **Phase 5** — Advanced: Microsoft 365, Backup & Restore
 
+## Status Page
+
+Public page at `/status` — no login required, dark theme, auto-refresh every 30 seconds.
+
+Three tabs:
+
+**Uptime Monitor** — all enabled monitors with sparkline latency chart, status badge (up/down/degraded), latency and type. Overall status banner at the top (green/red/yellow).
+
+**Network** — two sections:
+- Routers: online/offline indicator with ping latency for each configured router
+- Internet Speed: Download / Upload / Ping cards with Min / Avg / Max values + ping history chart
+
+**Proxmox** — node card with name, VM count, running count, CPU / RAM / Disk usage bars, uptime, and storage breakdown (name, type, usage bar, GB values)
+
 ## License
 
 MIT — see [LICENSE](LICENSE)
