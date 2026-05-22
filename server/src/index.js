@@ -80,7 +80,7 @@ app.use('/api/routers',     requireAuth, routersRoutes);
 app.use('/api/dns',         requireAuth, dnsRoutes);
 app.use('/api/proxmox',     requireAuth, proxmoxRoutes);
 app.use('/api/scanner',     requireAuth, scannerRouter);
-app.use('/api/netspeed',    requireAuth, netspeedRoutes);
+app.use('/api/netspeed',    requireAuth, netspeedRoutes.router);
 
 // ── Socket.io ─────────────────────────────────────────────────────
 io.on('connection', (socket) => {
