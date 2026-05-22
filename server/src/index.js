@@ -68,7 +68,110 @@ app.use('/api/auth',        authRoutes);
 app.use('/api/totp',        totpRoutes);
 app.get('/api/settings/app', settingsRoutes);
 app.use('/api/status',      statusRoutes);
-app.get('/api/monitors/public', (req, res) => monitorsRoutes.handle ? monitorsRoutes.handle(req, res) : require('./routes/monitors').handle?.(req,res));
+// Public endpoints — no auth
+app.get('/api/monitors/public', (req, res) => {
+  const db = require('./db/database');
+  const monitors = db.prepare(
+    'SELECT id, label, type, target, last_status, last_latency_ms, last_checked_at FROM monitors WHERE enabled = 1 ORDER BY label'
+  ).all();
+  res.json(monitors);
+});
+app.get('/api/netspeed/public', (req, res) => {
+  const db = require('./db/database');
+  const tests = db.prepare(
+    "SELECT download, upload, ping, created_at FROM speed_tests WHERE status='done' ORDER BY created_at DESC LIMIT 50"
+  ).all();
+  const calc = (vals) => {
+    const v = vals.filter(x => x != null && x > 0);
+    if (!v.length) return { min: null, avg: null, max: null };
+    return {
+      min: Math.round(Math.min(...v) * 10) / 10,
+      avg: Math.round((v.reduce((a,b) => a+b,0) / v.length) * 10) / 10,
+      max: Math.round(Math.max(...v) * 10) / 10,
+    };
+  };
+  res.json({
+    stats: {
+      download: calc(tests.map(t => t.download)),
+      upload:   calc(tests.map(t => t.upload)),
+      ping:     calc(tests.map(t => t.ping)),
+    },
+    tests,
+  });
+});
+app.get('/api/routers/public', (req, res) => {
+  const db = require('./db/database');
+  const routers = db.prepare('SELECT id, name, brand, model, ip_address FROM routers ORDER BY name').all();
+  res.json(routers);
+});
+app.get('/api/routers/:id/ping/public', async (req, res) => {
+  const db = require('./db/database');
+  const r = db.prepare('SELECT ip_address FROM routers WHERE id = ?').get(req.params.id);
+  if (!r) return res.json({ alive: false });
+  try {
+    const { execSync } = require('child_process');
+    const start = Date.now();
+    execSync(`ping -c 1 -W 3 ${r.ip_address}`, { timeout: 5000 });
+    res.json({ alive: true, latency_ms: Date.now() - start });
+  } catch {
+    res.json({ alive: false });
+  }
+});
+app.get('/api/proxmox/public', async (req, res) => {
+  try {
+    const proxmoxRoute = require('./routes/proxmox');
+    // Reuse same logic but without auth
+    const axios = require('axios');
+    const https = require('https');
+    const db    = require('./db/database');
+    const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+    const url     = db.prepare("SELECT value FROM settings WHERE key='proxmox_url'").get()?.value;
+    const tokenId = db.prepare("SELECT value FROM settings WHERE key='proxmox_token_id'").get()?.value || '';
+    const user    = db.prepare("SELECT value FROM settings WHERE key='proxmox_user'").get()?.value || 'root@pam';
+    const secret  = db.prepare("SELECT value FROM settings WHERE key='proxmox_api_token'").get()?.value || '';
+    if (!url || !secret) return res.json({ configured: false });
+    const token = tokenId ? `${user}!${tokenId}=${secret}` : secret;
+    const r = await axios.get(`${url}/api2/json/nodes`, {
+      headers: { Authorization: `PVEAPIToken=${token}` }, httpsAgent, timeout: 10000
+    });
+    const nodes = (r.data.data || []).map(n => ({
+      node:         n.node,
+      status:       n.status,
+      cpu_usage:    n.cpu  != null  ? Math.round(n.cpu  * 100) : 0,
+      mem_usage:    n.mem  && n.maxmem  ? Math.round((n.mem  / n.maxmem)  * 100) : 0,
+      disk_usage:   n.disk && n.maxdisk ? Math.round((n.disk / n.maxdisk) * 100) : 0,
+      mem_used_gb:  n.mem    ? (n.mem    / 1073741824).toFixed(1) : '0',
+      mem_max_gb:   n.maxmem ? (n.maxmem / 1073741824).toFixed(1) : '0',
+      maxcpu:       n.maxcpu,
+      uptime:       n.uptime,
+    })).sort((a, b) => a.node.localeCompare(b.node));
+    // Get VM counts per node
+    for (const node of nodes) {
+      if (node.status !== 'online') { node.vm_count = 0; node.running = 0; continue; }
+      try {
+        const [vms, lxc] = await Promise.all([
+          axios.get(`${url}/api2/json/nodes/${node.node}/qemu`, { headers: { Authorization: `PVEAPIToken=${token}` }, httpsAgent, timeout: 8000 }),
+          axios.get(`${url}/api2/json/nodes/${node.node}/lxc`,  { headers: { Authorization: `PVEAPIToken=${token}` }, httpsAgent, timeout: 8000 }),
+        ]);
+        const all = [...(vms.data.data || []), ...(lxc.data.data || [])];
+        node.vm_count = all.length;
+        node.running  = all.filter(v => v.status === 'running').length;
+        // Storage
+        const stor = await axios.get(`${url}/api2/json/nodes/${node.node}/storage`, { headers: { Authorization: `PVEAPIToken=${token}` }, httpsAgent, timeout: 8000 });
+        node.storages = (stor.data.data || []).map(s => ({
+          storage:   s.storage,
+          type:      s.type,
+          total_gb:  s.total ? (s.total / 1073741824).toFixed(1) : null,
+          used_gb:   s.used  ? (s.used  / 1073741824).toFixed(1) : null,
+          usage_pct: s.total && s.used ? Math.round((s.used / s.total) * 100) : null,
+        }));
+      } catch { node.vm_count = 0; node.running = 0; node.storages = []; }
+    }
+    res.json({ configured: true, nodes });
+  } catch (err) {
+    res.json({ configured: false, error: err.message });
+  }
+});
 
 // ── Protected routes ──────────────────────────────────────────────
 app.use('/api/users',       requireAuth, usersRoutes);
