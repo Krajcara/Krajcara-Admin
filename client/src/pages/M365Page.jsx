@@ -170,7 +170,11 @@ export default function M365Page() {
   }, [])
 
   useEffect(() => { loadConfig() }, [loadConfig])
-  useEffect(() => { if (config?.configured) loadAll() else setLoading(false) }, [config?.configured, loadAll])
+
+  useEffect(() => {
+    if (config?.configured) loadAll()
+    else setLoading(false)
+  }, [config?.configured, loadAll])
 
   const STATUS_DOT = (status) => {
     if (!status || status === 'serviceOperational') return 'bg-green-500'
