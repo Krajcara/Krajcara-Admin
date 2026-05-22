@@ -1,120 +1,175 @@
 'use strict';
-const express = require('express');
-const router  = express.Router();
-const axios   = require('axios');
-const db      = require('../db/database');
+const express  = require('express');
+const router   = express.Router();
+const { exec } = require('child_process');
+const db       = require('../db/database');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { writeAuditLog } = require('../middleware/audit');
 
 router.use(requireAuth);
 
-function getConfig() {
-  const url      = db.prepare("SELECT value FROM settings WHERE key='myspeed_url'").get()?.value || '';
-  const password = db.prepare("SELECT value FROM settings WHERE key='myspeed_password'").get()?.value || '';
-  return { url: url.replace(/\/$/, ''), password };
+let testRunning = false;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function calcStats(values) {
+  const valid = values.filter(v => v != null && !isNaN(v) && v > 0);
+  if (!valid.length) return { min: null, avg: null, max: null };
+  const min = Math.min(...valid);
+  const max = Math.max(...valid);
+  const avg = valid.reduce((a, b) => a + b, 0) / valid.length;
+  return {
+    min: Math.round(min * 10) / 10,
+    avg: Math.round(avg * 10) / 10,
+    max: Math.round(max * 10) / 10,
+  };
 }
 
-function buildHeaders(password) {
-  return password ? { Authorization: password } : {};
+function runFastCli() {
+  return new Promise((resolve, reject) => {
+    // fast-cli with --upload flag and JSON output
+    // fast --upload --json outputs: {"downloadSpeed":X,"uploadSpeed":Y,"ping":Z,"downloaded":N,"latency":M,"bufferBloat":B,"userLocation":"...","userIp":"..."}
+    const fastBin = process.env.FAST_CLI_PATH || 'fast';
+    const cmd = `${fastBin} --upload --json`;
+
+    exec(cmd, { timeout: 120000, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err && !stdout) {
+        return reject(new Error(`fast-cli failed: ${err.message}`));
+      }
+
+      const raw = (stdout || '').trim();
+      if (!raw) return reject(new Error('fast-cli returned no output'));
+
+      try {
+        // fast --json can return multiple JSON objects or a single one
+        // Try to parse the last complete JSON object
+        const jsonMatches = raw.match(/\{[^{}]+\}/g);
+        if (!jsonMatches?.length) throw new Error('No JSON in output');
+
+        // Use the last (most complete) result
+        const data = JSON.parse(jsonMatches[jsonMatches.length - 1]);
+
+        const download = parseFloat(data.downloadSpeed) || null;
+        const upload   = parseFloat(data.uploadSpeed)   || null;
+        const ping     = parseFloat(data.latency || data.ping) || null;
+
+        if (!download) throw new Error('Could not parse download speed');
+
+        resolve({ download, upload, ping, server: data.userLocation || 'fast.com' });
+      } catch (parseErr) {
+        // Fallback: try to parse plain text output
+        // fast plain text: "X Mbps\nX Mbps upload"
+        const dlMatch  = raw.match(/^([\d.]+)\s*Mbps/im);
+        const ulMatch  = raw.match(/^([\d.]+)\s*Mbps\s+upload/im);
+        const download = dlMatch ? parseFloat(dlMatch[1]) : null;
+        const upload   = ulMatch ? parseFloat(ulMatch[1]) : null;
+        if (!download) return reject(new Error('Could not parse fast-cli output: ' + raw.slice(0, 200)));
+        resolve({ download, upload, ping: null, server: 'fast.com' });
+      }
+    });
+  });
 }
 
-// GET /api/netspeed/config
-router.get('/config', (req, res) => {
-  const url      = db.prepare("SELECT value FROM settings WHERE key='myspeed_url'").get()?.value || '';
-  const hasPass  = !!(db.prepare("SELECT value FROM settings WHERE key='myspeed_password'").get()?.value);
-  res.json({ configured: !!url, url, hasPassword: hasPass });
-});
+async function executeTest(triggeredBy = 'manual') {
+  if (testRunning) throw new Error('A test is already running');
+  testRunning = true;
 
-// POST /api/netspeed/config
-router.post('/config', requireRole('superadmin', 'admin'), (req, res) => {
-  const { url, password } = req.body;
-  if (!url?.trim()) return res.status(400).json({ error: 'URL is required' });
-  db.prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES ('myspeed_url',?,datetime('now'))").run(url.trim().replace(/\/$/, ''));
-  if (password && password !== '***') {
-    db.prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES ('myspeed_password',?,datetime('now'))").run(password);
+  // Insert a 'running' row so UI can show progress
+  const row = db.prepare(
+    "INSERT INTO speed_tests (status, triggered_by, created_at) VALUES ('running', ?, datetime('now'))"
+  ).run(triggeredBy);
+  const id = row.lastInsertRowid;
+
+  const io = global.io;
+  if (io) io.emit('netspeed:started', { id });
+
+  try {
+    const result = await runFastCli();
+
+    db.prepare(`
+      UPDATE speed_tests SET status='done', download=?, upload=?, ping=?, server=? WHERE id=?
+    `).run(result.download, result.upload ?? null, result.ping ?? null, result.server, id);
+
+    const saved = db.prepare('SELECT * FROM speed_tests WHERE id = ?').get(id);
+    if (io) io.emit('netspeed:done', { test: saved });
+    return saved;
+  } catch (err) {
+    db.prepare("UPDATE speed_tests SET status='error', error=? WHERE id=?").run(err.message, id);
+    if (io) io.emit('netspeed:error', { id, error: err.message });
+    throw err;
+  } finally {
+    testRunning = false;
   }
-  res.json({ ok: true });
-});
+}
 
-// GET /api/netspeed/tests?limit=N — latest tests
-router.get('/tests', async (req, res) => {
-  const cfg   = getConfig();
-  if (!cfg.url) return res.status(503).json({ error: 'MySpeed not configured' });
+// ── Routes ────────────────────────────────────────────────────────────────────
+
+// GET /api/netspeed/tests?limit=N
+router.get('/tests', (req, res) => {
   const limit = Math.min(parseInt(req.query.limit) || 50, 500);
-  try {
-    const r = await axios.get(`${cfg.url}/api/speedtests?limit=${limit}`, {
-      headers: buildHeaders(cfg.password), timeout: 10000
-    });
-    res.json(r.data);
-  } catch (err) {
-    const status = err.response?.status || 503;
-    res.status(status).json({ error: err.response?.data?.message || err.message });
-  }
+  const tests = db.prepare(
+    'SELECT * FROM speed_tests ORDER BY created_at DESC LIMIT ?'
+  ).all(limit);
+  res.json(tests);
 });
 
-// GET /api/netspeed/statistics?from=YYYY-MM-DD&to=YYYY-MM-DD
-router.get('/statistics', async (req, res) => {
-  const cfg = getConfig();
-  if (!cfg.url) return res.status(503).json({ error: 'MySpeed not configured' });
+// GET /api/netspeed/stats — min/avg/max for download, upload, ping
+router.get('/stats', (req, res) => {
+  const days = parseInt(req.query.days) || 30;
+  const since = new Date(Date.now() - days * 86400000)
+    .toISOString().replace('T', ' ').substring(0, 19);
 
-  // Default: last 30 days
-  const to   = req.query.to   || new Date().toISOString().slice(0, 10);
-  const from = req.query.from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const tests = db.prepare(
+    "SELECT download, upload, ping FROM speed_tests WHERE status='done' AND created_at >= ? ORDER BY created_at DESC"
+  ).all(since);
 
-  try {
-    const r = await axios.get(`${cfg.url}/api/speedtests/statistics?from=${from}&to=${to}`, {
-      headers: buildHeaders(cfg.password), timeout: 10000
-    });
-    res.json(r.data);
-  } catch (err) {
-    // Fallback: calculate stats ourselves from recent tests
-    try {
-      const tests = await axios.get(`${cfg.url}/api/speedtests?limit=200`, {
-        headers: buildHeaders(cfg.password), timeout: 10000
-      });
-      const items = (Array.isArray(tests.data) ? tests.data : []).filter(t => !t.error);
-      const calc  = (arr, key) => {
-        const vals = arr.map(t => t[key]).filter(v => v != null && v > 0);
-        if (!vals.length) return { min: null, max: null, avg: null };
-        return {
-          min: Math.round(Math.min(...vals) * 100) / 100,
-          max: Math.round(Math.max(...vals) * 100) / 100,
-          avg: Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 100) / 100,
-        };
-      };
-      res.json({ download: calc(items, 'download'), upload: calc(items, 'upload'), ping: calc(items, 'ping') });
-    } catch (err2) {
-      res.status(503).json({ error: err2.message });
-    }
-  }
+  res.json({
+    days,
+    count: tests.length,
+    download: calcStats(tests.map(t => t.download)),
+    upload:   calcStats(tests.map(t => t.upload)),
+    ping:     calcStats(tests.map(t => t.ping)),
+  });
 });
 
 // GET /api/netspeed/status
-router.get('/status', async (req, res) => {
-  const cfg = getConfig();
-  if (!cfg.url) return res.json({ configured: false });
-  try {
-    const r = await axios.get(`${cfg.url}/api/speedtests/status`, {
-      headers: buildHeaders(cfg.password), timeout: 5000
-    });
-    res.json({ configured: true, ...r.data });
-  } catch {
-    res.json({ configured: true, running: false, paused: false, unreachable: true });
-  }
+router.get('/status', (req, res) => {
+  const latest = db.prepare("SELECT * FROM speed_tests ORDER BY created_at DESC LIMIT 1").get();
+  res.json({
+    running:    testRunning,
+    last_test:  latest || null,
+  });
 });
 
-// POST /api/netspeed/run — trigger a new speedtest
+// POST /api/netspeed/run
 router.post('/run', requireRole('superadmin', 'admin', 'operator'), async (req, res) => {
-  const cfg = getConfig();
-  if (!cfg.url) return res.status(503).json({ error: 'MySpeed not configured' });
+  if (testRunning) return res.status(409).json({ error: 'A test is already running' });
+
+  // Respond immediately, test runs in background
+  res.json({ ok: true, message: 'Speed test started' });
+
   try {
-    const r = await axios.post(`${cfg.url}/api/speedtests/run`, {}, {
-      headers: buildHeaders(cfg.password), timeout: 10000
-    });
-    res.json(r.data);
+    await executeTest('manual');
   } catch (err) {
-    const msg = err.response?.data?.message || err.message;
-    res.status(err.response?.status || 503).json({ error: msg });
+    console.error('[NetSpeed] Test error:', err.message);
   }
 });
 
-module.exports = router;
+// DELETE /api/netspeed/tests/:id
+router.delete('/tests/:id', requireRole('superadmin', 'admin'), (req, res) => {
+  db.prepare('DELETE FROM speed_tests WHERE id = ?').run(req.params.id);
+  writeAuditLog({ userId: req.user.id, username: req.user.username, action: 'delete', module: 'netspeed', entityId: req.params.id, ip: req.ip, userAgent: req.headers['user-agent'] });
+  res.json({ ok: true });
+});
+
+// Scheduled auto-run (called from scheduler.js)
+async function runScheduledTest() {
+  try {
+    await executeTest('auto');
+    console.log('[NetSpeed] Scheduled test complete');
+  } catch (err) {
+    console.error('[NetSpeed] Scheduled test error:', err.message);
+  }
+}
+
+module.exports = { router, runScheduledTest };
