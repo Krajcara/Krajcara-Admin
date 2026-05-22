@@ -30,6 +30,8 @@ const dnsRoutes      = require('./routes/dns');
 const proxmoxRoutes  = require('./routes/proxmox');
 const { router: scannerRouter, initSchedules } = require('./routes/scanner');
 const netspeedRoutes = require('./routes/netspeed');
+const m365Routes     = require('./routes/m365');
+const { router: backupRouter, runAutoBackup } = require('./routes/backup');
 
 const app    = express();
 const server = http.createServer(app);
@@ -81,6 +83,8 @@ app.use('/api/dns',         requireAuth, dnsRoutes);
 app.use('/api/proxmox',     requireAuth, proxmoxRoutes);
 app.use('/api/scanner',     requireAuth, scannerRouter);
 app.use('/api/netspeed',    requireAuth, netspeedRoutes.router);
+app.use('/api/m365',       requireAuth, m365Routes);
+app.use('/api/backup',     requireAuth, backupRouter);
 
 // ── Socket.io ─────────────────────────────────────────────────────
 io.on('connection', (socket) => {
