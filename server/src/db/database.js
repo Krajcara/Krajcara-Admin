@@ -142,3 +142,80 @@ db.exec(`
     updated_at     TEXT DEFAULT (datetime('now'))
   );
 `);
+
+// Phase 3 — Network tables
+db.exec(`
+  CREATE TABLE IF NOT EXISTS monitors (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    label           TEXT NOT NULL,
+    type            TEXT NOT NULL DEFAULT 'http',
+    target          TEXT NOT NULL,
+    port            INTEGER,
+    interval_s      INTEGER DEFAULT 60,
+    timeout_s       INTEGER DEFAULT 10,
+    keyword         TEXT,
+    expected_status INTEGER DEFAULT 200,
+    enabled         INTEGER DEFAULT 1,
+    last_status     TEXT DEFAULT 'unknown',
+    last_latency_ms INTEGER,
+    last_checked_at TEXT,
+    created_at      TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS monitor_checks (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    monitor_id  INTEGER NOT NULL,
+    status      TEXT NOT NULL,
+    latency_ms  INTEGER,
+    status_code INTEGER,
+    error_msg   TEXT,
+    checked_at  TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (monitor_id) REFERENCES monitors(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_monitor_checks_monitor ON monitor_checks(monitor_id, checked_at);
+
+  CREATE TABLE IF NOT EXISTS routers (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    name                 TEXT NOT NULL,
+    brand                TEXT NOT NULL DEFAULT 'other',
+    model                TEXT,
+    ip_address           TEXT,
+    username             TEXT,
+    password_encrypted   TEXT,
+    notes                TEXT,
+    snmp_version         TEXT DEFAULT '2c',
+    snmp_community       TEXT DEFAULT 'public',
+    snmp_port            INTEGER DEFAULT 161,
+    snmp_username        TEXT,
+    snmp_auth_protocol   TEXT DEFAULT 'SHA',
+    snmp_auth_password   TEXT,
+    snmp_priv_protocol   TEXT DEFAULT 'AES',
+    snmp_priv_password   TEXT,
+    snmp_security_level  TEXT DEFAULT 'authPriv',
+    created_at           TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS dns_local (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    role       TEXT NOT NULL DEFAULT 'primary',
+    type       TEXT NOT NULL DEFAULT 'technitium',
+    ip         TEXT NOT NULL,
+    api_key    TEXT,
+    label      TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS dns_domains (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    domain     TEXT UNIQUE NOT NULL,
+    notes      TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+`);
+
+// Cleanup old monitor checks (keep 7 days)
+try {
+  db.prepare("DELETE FROM monitor_checks WHERE checked_at < datetime('now', '-7 days')").run();
+} catch {}
