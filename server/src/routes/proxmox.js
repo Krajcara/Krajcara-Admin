@@ -134,12 +134,14 @@ router.get('/nodes', async (req, res) => {
         mem_used_gb: node.mem    ? (node.mem    / 1073741824).toFixed(1) : '0',
         mem_max_gb:  node.maxmem ? (node.maxmem / 1073741824).toFixed(1) : '0',
         maxcpu: node.maxcpu, uptime: node.uptime,
-        vms: enrichedVMs, lxc: enrichedLXC, storages: enrichedStorages,
+        vms: enrichedVMs.sort((a, b) => (a.name || '').localeCompare(b.name || '')),
+        lxc: enrichedLXC.sort((a, b) => (a.name || '').localeCompare(b.name || '')),
+        storages: enrichedStorages,
         vm_count: vms.length, lxc_count: lxc.length,
       };
     }));
 
-    res.json({ configured: true, nodes: details });
+    res.json({ configured: true, nodes: details.sort((a, b) => a.node.localeCompare(b.node)) });
   } catch (err) {
     const s = err.response?.status || 500;
     let msg = err.response?.data?.errors?.[0]?.message || err.message;
