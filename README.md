@@ -63,6 +63,20 @@ The updater:
   - Real-time status via Socket.io — running indicator while test is in progress
   - Requires: `npm install -g fast-cli` (done automatically by installer)
 
+### Phase 5 — Advanced
+- **Microsoft 365** — Microsoft Graph API integration via Entra ID App Registration
+  - Overview: total users, active users, licensed users, MFA enabled count
+  - Users tab: list all users with MFA status, admin roles, licences; filter by Admins / No MFA / Disabled / Shared Mailboxes; search by name or email; view group memberships per user
+  - Licences tab: all subscribed SKUs with total/used/available seats and usage bar
+  - Service Health tab: real-time service status for all Microsoft 365 services with active incident details
+- **Backup & Restore** — superadmin only
+  - Create manual backup (VACUUM INTO — clean copy without WAL)
+  - Download current database as `.db` file
+  - Restore from uploaded `.db` file — validates integrity, auto-creates pre-restore backup, restarts service
+  - List of saved backups with download and delete per backup
+  - Automatic daily backup at 03:00 — keeps last 7 auto-backups
+  - Manual backups: keeps last 10
+
 ### Phase 4 — Infrastructure
 - **Proxmox** — connect via API token; view nodes, VMs and LXC containers with CPU/RAM/disk usage bars; start/stop/reboot/shutdown actions with confirmation; storage overview per node; nodes, VMs and containers sorted alphabetically
 - **Network Scanner** — three tabs in one page:
@@ -177,7 +191,7 @@ krajcara-admin/
 - ✅ **Phase 2** — Inventory: Licences (manual + Entra ID Apps)
 - ✅ **Phase 3** — Network: Uptime Monitor, Routers (SNMP), DNS (Local + Cloudflare + Manual), Net Speed (MySpeed)
 - ✅ **Phase 4** — Infrastructure: Proxmox, Network Scanner, Scan Automation
-- **Phase 5** — Advanced: Microsoft 365, Backup & Restore, Reports
+- ✅ **Phase 5** — Advanced: Microsoft 365, Backup & Restore
 
 ## License
 
