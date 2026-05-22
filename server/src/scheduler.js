@@ -29,11 +29,15 @@ function start() {
     console.error('[Scheduler] Scan schedules init failed:', e.message);
   }
 
-  // Daily 03:00 — cleanup revoked tokens + audit retention
+  // Daily 03:00 — cleanup revoked tokens + audit retention + auto-backup
   cron.schedule('0 3 * * *', () => {
     console.log('[Scheduler] Daily cleanup...');
     cleanupRevokedTokens();
     runRetentionCleanup();
+    try {
+      const { runAutoBackup } = require('./routes/backup');
+      runAutoBackup();
+    } catch (e) { console.error('[Scheduler] Auto-backup failed:', e.message); }
   });
 
   // Hourly speed test
