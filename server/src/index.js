@@ -32,7 +32,10 @@ const app    = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
-  cors: { origin: process.env.NODE_ENV === 'development' ? 'http://localhost:5173' : false, credentials: true }
+  cors: {
+    origin: process.env.NODE_ENV === 'development' ? 'http://localhost:5173' : '*',
+    credentials: true
+  }
 });
 app.set('io', io);
 
@@ -77,6 +80,7 @@ app.use('/api/dns',         requireAuth, dnsRoutes);
 io.on('connection', (socket) => {
   socket.on('disconnect', () => {});
 });
+global.io = io; // Make accessible to routes (update, monitorWorker);
 
 // ── Frontend SPA (production) ─────────────────────────────────────
 if (process.env.NODE_ENV === 'production') {
