@@ -36,6 +36,16 @@ function start() {
     runRetentionCleanup();
   });
 
+  // Hourly speed test
+  cron.schedule('0 * * * *', () => {
+    try {
+      const { runScheduledTest } = require('./routes/netspeed');
+      runScheduledTest();
+    } catch (e) {
+      console.error('[Scheduler] Speed test error:', e.message);
+    }
+  });
+
   console.log('[Scheduler] Started');
 }
 
