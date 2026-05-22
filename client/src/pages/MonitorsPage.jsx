@@ -7,7 +7,12 @@ import { useAuthStore } from '../store/authStore'
 import { Card, Button, Modal, Input, Select, Badge, Empty, Spinner, AlertBox } from '../components/shared/UI'
 import { cn, timeAgo } from '../lib/utils'
 
-const STATUS_DOT   = { up: 'bg-green-500', down: 'bg-red-500 animate-pulse', degraded: 'bg-yellow-400 animate-pulse', unknown: 'bg-gray-400' }
+const STATUS_DOT = {
+  up:       'bg-green-500',
+  down:     'bg-red-500 animate-pulse',
+  degraded: 'bg-yellow-400 animate-pulse',
+  unknown:  'bg-gray-400'
+}
 const STATUS_COLOR = {
   up:       'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
   down:     'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
@@ -24,7 +29,6 @@ const INTERVALS = [
   { label: '30 minutes', value: 1800 },
 ]
 
-// ── Monitor form ──────────────────────────────────────────────────────────────
 function MonitorForm({ initial, onSave, onCancel }) {
   const isEdit = !!initial?.id
   const [form,    setForm]    = useState(initial || { label: '', type: 'http', target: '', port: '', interval_s: 60, keyword: '', expected_status: 200 })
@@ -38,7 +42,7 @@ function MonitorForm({ initial, onSave, onCancel }) {
       const payload = {
         ...form,
         interval_s:      parseInt(form.interval_s) || 60,
-        timeout_s:       parseInt(form.timeout_s)  || 10,
+        timeout_s:       10,
         expected_status: parseInt(form.expected_status) || 200,
         port:            form.port ? parseInt(form.port) : undefined,
       }
@@ -58,8 +62,7 @@ function MonitorForm({ initial, onSave, onCancel }) {
       </Select>
       <Input
         label={form.type === 'icmp' ? 'IP address or hostname' : form.type === 'dns' ? 'Domain' : 'URL or IP'}
-        autoComplete="off"
-        value={form.target} onChange={f('target')}
+        autoComplete="off" value={form.target} onChange={f('target')}
         placeholder={form.type === 'http' ? 'https://example.com' : form.type === 'icmp' ? '192.168.1.1' : 'example.com'}
         required
       />
@@ -81,7 +84,7 @@ function MonitorForm({ initial, onSave, onCancel }) {
   )
 }
 
-// ── Monitor card ──────────────────────────────────────────────────────────────
+// Monitor card — styled exactly like Krajcara-Scan original
 function MonitorCard({ monitor, onEdit, onDelete, canEdit }) {
   const [checks,  setChecks]  = useState([])
   const [status,  setStatus]  = useState(monitor.last_status || 'unknown')
@@ -102,17 +105,18 @@ function MonitorCard({ monitor, onEdit, onDelete, canEdit }) {
   const lineColor = status === 'down' ? '#ef4444' : status === 'degraded' ? '#eab308' : '#22c55e'
 
   return (
-    <Card className="p-4">
-      <div className="flex items-start justify-between mb-3">
+    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
+      {/* Header row */}
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2.5 min-w-0">
           <span className={cn('w-2.5 h-2.5 rounded-full flex-shrink-0', STATUS_DOT[status])} />
           <div className="min-w-0">
-            <p className="font-medium text-gray-900 dark:text-white text-sm truncate">{monitor.label}</p>
-            <p className="text-xs text-gray-400 font-mono truncate max-w-44">{monitor.target}</p>
+            <p className="font-medium text-gray-900 dark:text-white text-sm leading-tight">{monitor.label}</p>
+            <p className="text-xs text-gray-400 font-mono truncate max-w-48 mt-0.5">{monitor.target}</p>
           </div>
         </div>
-        <div className="flex items-center gap-1 flex-shrink-0 ml-2">
-          <Badge className={cn('text-xs', STATUS_COLOR[status])}>{status}</Badge>
+        <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+          <Badge className={cn('text-xs font-semibold px-2 py-0.5', STATUS_COLOR[status])}>{status}</Badge>
           {canEdit && (
             <>
               <button onClick={() => onEdit(monitor)} className="p-1.5 text-gray-400 hover:text-brand rounded transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
@@ -122,31 +126,36 @@ function MonitorCard({ monitor, onEdit, onDelete, canEdit }) {
         </div>
       </div>
 
-      {checks.length > 1 && (
-        <div className="h-10 mb-3">
+      {/* Sparkline chart — always show placeholder area to keep consistent card height */}
+      <div className="h-10 mb-3">
+        {checks.length > 1 ? (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={checks}>
-              <Line type="monotone" dataKey="v" stroke={lineColor} dot={false} strokeWidth={1.5} />
+              <Line type="monotone" dataKey="v" stroke={lineColor} dot={false} strokeWidth={1.5} isAnimationActive={false} />
               <Tooltip
-                contentStyle={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, border: 'none', background: '#1f2937', color: '#fff' }}
+                contentStyle={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, border: 'none', background: '#111827', color: '#f9fafb' }}
                 formatter={v => [`${v}ms`, 'Latency']}
                 labelFormatter={() => ''}
               />
             </LineChart>
           </ResponsiveContainer>
-        </div>
-      )}
+        ) : (
+          <div className="h-full flex items-center">
+            <div className="w-full h-px bg-gray-100 dark:bg-gray-800" />
+          </div>
+        )}
+      </div>
 
+      {/* Footer row */}
       <div className="flex items-center justify-between text-xs text-gray-400">
-        <span>{latency != null ? `${latency}ms` : '—'}</span>
-        <span className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded font-mono">{monitor.type.toUpperCase()}</span>
+        <span className="font-mono">{latency != null ? `${latency}ms` : '—'}</span>
+        <span className="bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded font-mono font-medium">{monitor.type.toUpperCase()}</span>
         <span>{monitor.last_checked_at ? timeAgo(monitor.last_checked_at) : 'Not checked yet'}</span>
       </div>
-    </Card>
+    </div>
   )
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
 export default function MonitorsPage() {
   const [monitors, setMonitors] = useState([])
   const [loading,  setLoading]  = useState(true)
@@ -163,8 +172,7 @@ export default function MonitorsPage() {
 
   const handleDelete = async () => {
     await api.delete(`/monitors/${deleteId}`).catch(() => {})
-    setDeleteId(null)
-    load()
+    setDeleteId(null); load()
   }
 
   const stats = {
@@ -191,13 +199,13 @@ export default function MonitorsPage() {
       {monitors.length > 0 && (
         <div className="flex gap-3 flex-wrap">
           {[
-            { label: 'Up',       count: stats.up,       color: 'text-green-600 dark:text-green-400' },
-            { label: 'Down',     count: stats.down,     color: 'text-red-600 dark:text-red-400' },
-            { label: 'Degraded', count: stats.degraded, color: 'text-yellow-600 dark:text-yellow-400' },
+            { label: 'Up',       count: stats.up,       cls: 'text-green-600 dark:text-green-400' },
+            { label: 'Down',     count: stats.down,     cls: 'text-red-600 dark:text-red-400' },
+            { label: 'Degraded', count: stats.degraded, cls: 'text-yellow-600 dark:text-yellow-400' },
           ].map(s => (
             <div key={s.label} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-4 py-2 text-sm">
               <span className="text-gray-500 dark:text-gray-400">{s.label}: </span>
-              <span className={cn('font-semibold', s.color)}>{s.count}</span>
+              <span className={cn('font-semibold', s.cls)}>{s.count}</span>
             </div>
           ))}
         </div>
@@ -222,7 +230,7 @@ export default function MonitorsPage() {
         </Modal>
       )}
       <Modal open={!!deleteId} onClose={() => setDeleteId(null)} title="Delete monitor" size="sm">
-        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">This will also delete all check history. This cannot be undone.</p>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">This will also delete all check history.</p>
         <div className="flex gap-3">
           <Button variant="danger" onClick={handleDelete}>Delete</Button>
           <Button variant="secondary" onClick={() => setDeleteId(null)}>Cancel</Button>
