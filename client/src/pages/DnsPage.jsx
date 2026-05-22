@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Plus, Trash2, RefreshCw, CheckCircle, XCircle, Globe, Server, Key, Settings, AlertCircle } from 'lucide-react'
 import api from '../lib/api'
 import { useAuthStore } from '../store/authStore'
@@ -203,11 +203,24 @@ function CloudflareSection({ canEdit }) {
   const [saving,    setSaving]    = useState(false)
   const [error,     setError]     = useState('')
 
+  const autoRefreshRef = useRef(null)
+
   const loadConfig = useCallback(() => {
     api.get('/dns/cloudflare/config').then(r => setConfig(r.data)).catch(() => {})
   }, [])
 
   useEffect(() => { loadConfig() }, [loadConfig])
+
+  // Auto-refresh zones every 90 seconds when configured
+  useEffect(() => {
+    if (!config?.configured || zones.length === 0) return
+    autoRefreshRef.current = setInterval(() => {
+      api.get('/dns/cloudflare/zones')
+        .then(r => setZones(r.data))
+        .catch(() => {})
+    }, 90000)
+    return () => clearInterval(autoRefreshRef.current)
+  }, [config?.configured, zones.length])
 
   const saveConfig = async (e) => {
     e.preventDefault(); setSaving(true); setError('')
@@ -218,13 +231,15 @@ function CloudflareSection({ canEdit }) {
     finally { setSaving(false) }
   }
 
-  const fetchZones = async () => {
-    setLoading(true); setError(''); setZones([])
+  const fetchZones = async (silent = false) => {
+    if (!silent) { setLoading(true); setError('') }
     try {
       const r = await api.get('/dns/cloudflare/zones')
       setZones(r.data)
-    } catch (err) { setError(err.response?.data?.error || 'Failed to fetch zones') }
-    finally { setLoading(false) }
+    } catch (err) {
+      if (!silent) setError(err.response?.data?.error || 'Failed to fetch zones')
+    }
+    finally { if (!silent) setLoading(false) }
   }
 
   return (
