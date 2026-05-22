@@ -12,6 +12,9 @@ import AuditPage         from './pages/AuditPage'
 import SettingsPage      from './pages/SettingsPage'
 import ProfilePage       from './pages/ProfilePage'
 import LicencesPage      from './pages/LicencesPage'
+import MonitorsPage      from './pages/MonitorsPage'
+import RoutersPage       from './pages/RoutersPage'
+import DnsPage           from './pages/DnsPage'
 
 function ProtectedRoute({ children, roles }) {
   const { isAuthenticated, user } = useAuthStore()
@@ -37,7 +40,10 @@ export default function App() {
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={<DashboardPage />} />
           <Route path="profile"   element={<ProfilePage />} />
-          <Route path="licences"  element={<LicencesPage />} />
+          <Route path="licences"   element={<LicencesPage />} />
+          <Route path="monitors"   element={<MonitorsPage />} />
+          <Route path="routers"    element={<RoutersPage />} />
+          <Route path="dns"        element={<DnsPage />} />
           <Route path="users"    element={<ProtectedRoute roles={['superadmin', 'admin']}><UsersPage /></ProtectedRoute>} />
           <Route path="audit"    element={<ProtectedRoute roles={['superadmin', 'admin']}><AuditPage /></ProtectedRoute>} />
           <Route path="settings" element={<ProtectedRoute roles={['superadmin', 'admin']}><SettingsPage /></ProtectedRoute>} />
