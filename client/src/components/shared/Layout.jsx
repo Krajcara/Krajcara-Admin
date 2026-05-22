@@ -46,7 +46,12 @@ export default function Layout() {
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
         {filteredNav.map((item, i) => {
-          if (item.separator) return <div key={i} className="my-2 border-t border-gray-200 dark:border-gray-800" />
+          if (item.separator) return (
+              <div key={i} className="pt-2 pb-1">
+                <div className="border-t border-gray-200 dark:border-gray-800 mb-1" />
+                {item.label && <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mt-1">{item.label}</p>}
+              </div>
+            )
           return (
             <NavLink
               key={item.to}
