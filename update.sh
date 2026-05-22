@@ -102,6 +102,12 @@ cd "$INSTALL_DIR/server"
 unset NODE_ENV
 npm install --silent 2>&1 | tail -3
 
+# Install fast-cli if not already present
+if ! command -v fast &>/dev/null; then
+  info "Installing fast-cli..."
+  npm install -g fast-cli 2>&1 | tail -3
+fi
+
 info "Updating client dependencies..."
 cd "$INSTALL_DIR/client"
 npm install --silent 2>&1 | tail -3
