@@ -65,9 +65,12 @@ function StatsRow({ monitors, proxmox, licences, entraApps }) {
   const monUp       = monitors.filter(m => m.last_status === 'up').length
   const monColor    = monDown > 0 ? 'red' : monDegraded > 0 ? 'yellow' : 'green'
 
-  // Proxmox total running
-  const totalVMs   = proxmox?.nodes?.reduce((a, n) => a + (n.vm_count || 0), 0) || 0
-  const totalRun   = proxmox?.nodes?.reduce((a, n) => a + (n.running  || 0), 0) || 0
+  // Proxmox total — count from vms+lxc arrays
+  const totalVMs = proxmox?.nodes?.reduce((a, n) => a + (n.vms?.length || 0) + (n.lxc?.length || 0), 0) || 0
+  const totalRun = proxmox?.nodes?.reduce((a, n) => {
+    const allVms = [...(n.vms || []), ...(n.lxc || [])]
+    return a + allVms.filter(v => v.status === 'running').length
+  }, 0) || 0
 
   // Entra expiring
   const entraNow   = new Date()
@@ -144,8 +147,10 @@ function ProxmoxRow({ proxmox }) {
                 {node.uptime && <span className="text-xs text-gray-400">· {fmtUptime(node.uptime)}</span>}
               </div>
               <div className="flex items-center gap-1 text-xs text-gray-500">
-                <span className="font-semibold text-gray-900 dark:text-white">{node.running || 0}</span>
-                <span>/ {node.vm_count || 0} running</span>
+                <span className="font-semibold text-gray-900 dark:text-white">
+                  {[...(node.vms || []), ...(node.lxc || [])].filter(v => v.status === 'running').length}
+                </span>
+                <span>/ {(node.vms?.length || 0) + (node.lxc?.length || 0)} running</span>
               </div>
             </div>
 
