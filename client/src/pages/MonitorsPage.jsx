@@ -143,9 +143,9 @@ function MonitorCard({ monitor, onEdit, onDelete, canEdit }) {
         </div>
       </div>
 
-      {/* Sparkline chart — always show placeholder area to keep consistent card height */}
+      {/* Sparkline chart */}
       <div className="h-10 mb-3">
-        {checks.length >= 1 ? (
+        {checks.length >= 2 ? (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={checks}>
               <Line type="monotone" dataKey="v" stroke={lineColor} dot={false} strokeWidth={1.5} isAnimationActive={false} />
@@ -157,7 +157,7 @@ function MonitorCard({ monitor, onEdit, onDelete, canEdit }) {
             </LineChart>
           </ResponsiveContainer>
         ) : (
-          <div className="h-full flex items-center">
+          <div className="h-full flex items-end pb-1">
             <div className="w-full h-px bg-gray-100 dark:bg-gray-800" />
           </div>
         )}
@@ -183,7 +183,10 @@ export default function MonitorsPage() {
 
   const load = () => {
     setLoading(true)
-    api.get('/monitors').then(r => setMonitors(r.data)).catch(() => {}).finally(() => setLoading(false))
+    api.get('/monitors')
+      .then(r => setMonitors([...(r.data || [])].sort((a, b) => a.label.localeCompare(b.label))))
+      .catch(() => {})
+      .finally(() => setLoading(false))
   }
   useEffect(load, [])
 
