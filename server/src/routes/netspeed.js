@@ -2,6 +2,8 @@
 const express  = require('express');
 const router   = express.Router();
 const { exec } = require('child_process');
+const https    = require('https');
+const http     = require('http');
 const db       = require('../db/database');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { writeAuditLog } = require('../middleware/audit');
@@ -21,58 +23,108 @@ function calcStats(values) {
   };
 }
 
-function findSpeedtest() {
-  const { execSync } = require('child_process');
-  const candidates = [
-    '/usr/bin/speedtest',
-    '/usr/local/bin/speedtest',
-    '/usr/bin/speedtest-cli',
-    '/usr/local/bin/speedtest-cli',
-  ];
-  for (const p of candidates) {
-    try { execSync(`test -x ${p}`, { timeout: 1000 }); return p; } catch {}
-  }
-  try {
-    const found = execSync('which speedtest || which speedtest-cli 2>/dev/null', { timeout: 3000 }).toString().trim().split('\n')[0].trim();
-    if (found) return found;
-  } catch {}
-  return null;
-}
-
-function runSpeedtest() {
-  return new Promise((resolve, reject) => {
-    const bin = findSpeedtest();
-    if (!bin) {
-      return reject(new Error(
-        'speedtest not found. Install: sudo apt-get install -y speedtest-cli'
-      ));
-    }
-
-    // --json gives structured output with download/upload in bits/s and ping in ms
-    exec(`${bin} --json --timeout 60`, { timeout: 120000 }, (err, stdout, stderr) => {
-      if (err && !stdout) {
-        return reject(new Error(`speedtest-cli failed: ${err.message}`));
-      }
-
-      const raw = (stdout || '').trim();
-      if (!raw) return reject(new Error('speedtest-cli returned no output'));
-
-      try {
-        const data = JSON.parse(raw);
-        // speedtest-cli returns bits/s — convert to Mbps
-        const download = data.download ? Math.round((data.download / 1_000_000) * 10) / 10 : null;
-        const upload   = data.upload   ? Math.round((data.upload   / 1_000_000) * 10) / 10 : null;
-        const ping     = data.ping     ? Math.round(data.ping * 10) / 10 : null;
-        const server   = data.server   ? `${data.server.name}, ${data.server.country}` : 'Ookla';
-        if (!download) throw new Error('Could not parse download speed');
-        resolve({ download, upload, ping, server });
-      } catch (parseErr) {
-        reject(new Error('Could not parse speedtest output: ' + raw.slice(0, 200)));
-      }
+// ── Ping test ─────────────────────────────────────────────────────────────────
+function measurePing(host = 'cloudflare.com', count = 5) {
+  return new Promise(resolve => {
+    exec(`ping -c ${count} -W 3 ${host}`, { timeout: 15000 }, (err, stdout) => {
+      if (err) return resolve(null);
+      const match = stdout.match(/rtt min\/avg\/max\/mdev = ([\d.]+)\/([\d.]+)\/([\d.]+)/);
+      resolve(match ? parseFloat(match[2]) : null); // return avg
     });
   });
 }
 
+// ── Download test — curl from Cloudflare speed test ───────────────────────────
+function measureDownload() {
+  return new Promise((resolve) => {
+    // Use Cloudflare's speed test endpoint — 100MB file, no auth needed
+    const urls = [
+      'https://speed.cloudflare.com/__down?bytes=25000000',  // 25MB
+      'http://proof.ovh.net/files/10Mb.dat',
+    ];
+
+    let tried = 0;
+
+    function tryUrl(url) {
+      if (tried >= urls.length) return resolve(null);
+      const u = urls[tried++];
+      const start   = Date.now();
+      let   bytes   = 0;
+      const proto   = u.startsWith('https') ? https : http;
+
+      const req = proto.get(u, { timeout: 30000, headers: { 'User-Agent': 'curl/7.68.0' } }, (res) => {
+        if (res.statusCode !== 200) { req.destroy(); return tryUrl(); }
+        res.on('data', chunk => { bytes += chunk.length; });
+        res.on('end', () => {
+          const elapsed = (Date.now() - start) / 1000; // seconds
+          if (elapsed < 0.5 || bytes < 1000) return tryUrl();
+          const mbps = Math.round(((bytes * 8) / elapsed / 1_000_000) * 10) / 10;
+          resolve(mbps);
+        });
+        res.on('error', () => tryUrl());
+      });
+      req.setTimeout(30000, () => { req.destroy(); tryUrl(); });
+      req.on('error', () => tryUrl());
+    }
+
+    tryUrl(urls[0]);
+  });
+}
+
+// ── Upload test — POST data to Cloudflare ─────────────────────────────────────
+function measureUpload() {
+  return new Promise((resolve) => {
+    const SIZE   = 5 * 1024 * 1024; // 5 MB
+    const data   = Buffer.alloc(SIZE, 'x');
+    const start  = Date.now();
+
+    const options = {
+      hostname: 'speed.cloudflare.com',
+      path:     '/__up',
+      method:   'POST',
+      timeout:  30000,
+      headers: {
+        'Content-Type':   'application/octet-stream',
+        'Content-Length': SIZE,
+        'User-Agent':     'curl/7.68.0',
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      res.resume(); // drain response
+      res.on('end', () => {
+        const elapsed = (Date.now() - start) / 1000;
+        if (elapsed < 0.2) return resolve(null);
+        const mbps = Math.round(((SIZE * 8) / elapsed / 1_000_000) * 10) / 10;
+        resolve(mbps);
+      });
+    });
+
+    req.setTimeout(30000, () => { req.destroy(); resolve(null); });
+    req.on('error', () => resolve(null));
+    req.write(data);
+    req.end();
+  });
+}
+
+// ── Run full speed test ───────────────────────────────────────────────────────
+async function runSpeedTest() {
+  // Run ping, download, upload in sequence
+  const ping     = await measurePing('cloudflare.com', 5);
+  const download = await measureDownload();
+  const upload   = await measureUpload();
+
+  if (!download) throw new Error('Download test failed — check internet connectivity');
+
+  return {
+    download,
+    upload:  upload || null,
+    ping:    ping   || null,
+    server:  'Cloudflare speed.cloudflare.com',
+  };
+}
+
+// ── Execute and persist ───────────────────────────────────────────────────────
 async function executeTest(triggeredBy = 'manual') {
   if (testRunning) throw new Error('A test is already running');
   testRunning = true;
@@ -81,15 +133,14 @@ async function executeTest(triggeredBy = 'manual') {
     "INSERT INTO speed_tests (status, triggered_by, created_at) VALUES ('running', ?, datetime('now'))"
   ).run(triggeredBy);
   const id = row.lastInsertRowid;
-
   const io = global.io;
   if (io) io.emit('netspeed:started', { id });
 
   try {
-    const result = await runSpeedtest();
+    const result = await runSpeedTest();
     db.prepare(
       "UPDATE speed_tests SET status='done', download=?, upload=?, ping=?, server=? WHERE id=?"
-    ).run(result.download, result.upload ?? null, result.ping ?? null, result.server, id);
+    ).run(result.download, result.upload, result.ping, result.server, id);
 
     const saved = db.prepare('SELECT * FROM speed_tests WHERE id = ?').get(id);
     if (io) io.emit('netspeed:done', { test: saved });
@@ -105,16 +156,11 @@ async function executeTest(triggeredBy = 'manual') {
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
-// GET /api/netspeed/tests?limit=N
 router.get('/tests', (req, res) => {
   const limit = Math.min(parseInt(req.query.limit) || 50, 500);
-  const tests = db.prepare(
-    'SELECT * FROM speed_tests ORDER BY created_at DESC LIMIT ?'
-  ).all(limit);
-  res.json(tests);
+  res.json(db.prepare('SELECT * FROM speed_tests ORDER BY created_at DESC LIMIT ?').all(limit));
 });
 
-// GET /api/netspeed/stats?days=30
 router.get('/stats', (req, res) => {
   const days  = parseInt(req.query.days) || 30;
   const since = new Date(Date.now() - days * 86400000)
@@ -123,21 +169,18 @@ router.get('/stats', (req, res) => {
     "SELECT download, upload, ping FROM speed_tests WHERE status='done' AND created_at >= ?"
   ).all(since);
   res.json({
-    days,
-    count:    tests.length,
+    days, count: tests.length,
     download: calcStats(tests.map(t => t.download)),
     upload:   calcStats(tests.map(t => t.upload)),
     ping:     calcStats(tests.map(t => t.ping)),
   });
 });
 
-// GET /api/netspeed/status
 router.get('/status', (req, res) => {
   const latest = db.prepare('SELECT * FROM speed_tests ORDER BY created_at DESC LIMIT 1').get();
   res.json({ running: testRunning, last_test: latest || null });
 });
 
-// POST /api/netspeed/run
 router.post('/run', requireRole('superadmin', 'admin', 'operator'), async (req, res) => {
   if (testRunning) return res.status(409).json({ error: 'A test is already running' });
   res.json({ ok: true, message: 'Speed test started' });
@@ -145,7 +188,6 @@ router.post('/run', requireRole('superadmin', 'admin', 'operator'), async (req, 
   catch (err) { console.error('[NetSpeed] Test error:', err.message); }
 });
 
-// DELETE /api/netspeed/tests/:id
 router.delete('/tests/:id', requireRole('superadmin', 'admin'), (req, res) => {
   db.prepare('DELETE FROM speed_tests WHERE id = ?').run(req.params.id);
   writeAuditLog({ userId: req.user.id, username: req.user.username, action: 'delete', module: 'netspeed', entityId: req.params.id, ip: req.ip, userAgent: req.headers['user-agent'] });
