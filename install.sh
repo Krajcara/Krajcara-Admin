@@ -76,7 +76,7 @@ info "OS: $OS $OS_VER"
 # ─── Install system packages ──────────────────────────────────────────────────
 info "Installing system packages..."
 apt-get update -qq
-apt-get install -y curl git ca-certificates gnupg openssl 2>&1 | tail -3
+apt-get install -y curl git ca-certificates gnupg openssl nmap 2>&1 | tail -3
 success "System packages ready"
 
 # ─── Install Node.js ──────────────────────────────────────────────────────────
