@@ -335,3 +335,20 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_speed_tests_created ON speed_tests(created_at);
 `);
+
+// Phase 6 — Notifications table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS notifications (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    type        TEXT NOT NULL DEFAULT 'info',
+    module      TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    message     TEXT,
+    entity_id   TEXT,
+    entity_name TEXT,
+    read        INTEGER DEFAULT 0,
+    created_at  TEXT DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_notif_read    ON notifications(read);
+  CREATE INDEX IF NOT EXISTS idx_notif_created ON notifications(created_at);
+`);
