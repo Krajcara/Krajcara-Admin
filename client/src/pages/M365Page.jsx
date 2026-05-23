@@ -2,12 +2,146 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Users, Shield, ShieldCheck, ShieldOff, RefreshCw,
   Settings, CheckCircle, AlertCircle, XCircle, Search,
-  ChevronDown, ChevronUp, UserX, Mail, Crown, Key
+  ChevronDown, ChevronUp, UserX, Mail, Crown, Key, HardDrive
 } from 'lucide-react'
 import api from '../lib/api'
 import { useAuthStore } from '../store/authStore'
 import { Card, CardHeader, CardTitle, CardContent, Button, Input, Modal, AlertBox, Spinner, Badge, StatCard } from '../components/shared/UI'
 import { cn } from '../lib/utils'
+
+
+// ── Storage Tab ───────────────────────────────────────────────────────────────
+function StorageTab() {
+  const [onedrive, setOnedrive] = useState(null)
+  const [mailbox,  setMailbox]  = useState(null)
+  const [loading,  setLoading]  = useState(true)
+  const [error,    setError]    = useState('')
+  const [period,   setPeriod]   = useState('D30')
+  const [section,  setSection]  = useState('onedrive')
+
+  const load = useCallback(async (p = period) => {
+    setLoading(true); setError('')
+    try {
+      const [odRes, mbRes] = await Promise.all([
+        api.get(`/m365/storage/onedrive?period=${p}`),
+        api.get(`/m365/storage/mailbox?period=${p}`),
+      ])
+      setOnedrive(odRes.data)
+      setMailbox(mbRes.data)
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to load storage data')
+    } finally { setLoading(false) }
+  }, [period])
+
+  useEffect(() => { load() }, [load])
+
+  const changePeriod = (p) => { setPeriod(p); load(p) }
+
+  function UsagePct({ pct }) {
+    const color = pct > 90 ? 'bg-red-500' : pct > 75 ? 'bg-yellow-500' : 'bg-brand'
+    return (
+      <div className="flex items-center gap-2 min-w-24">
+        <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+          <div className={cn('h-full rounded-full', color)} style={{ width: `${Math.min(pct, 100)}%` }} />
+        </div>
+        <span className={cn('text-xs font-mono w-8 text-right',
+          pct > 90 ? 'text-red-500' : pct > 75 ? 'text-yellow-500' : 'text-gray-500')}>{pct}%</span>
+      </div>
+    )
+  }
+
+  function StorageTable({ data, emptyMsg }) {
+    if (!data?.items?.length) return <p className="text-sm text-gray-400 text-center py-8">{emptyMsg}</p>
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
+              <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase">#</th>
+              <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase">User</th>
+              <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase">Used</th>
+              <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase">Quota</th>
+              <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase w-40">Usage</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+            {data.items.map((item, i) => (
+              <tr key={item.email} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                <td className="px-4 py-2.5 text-xs text-gray-400 font-mono">{i + 1}</td>
+                <td className="px-4 py-2.5">
+                  <p className="font-medium text-gray-900 dark:text-white text-sm">{item.name !== '—' ? item.name : item.email}</p>
+                  {item.name !== '—' && item.name !== item.email && (
+                    <p className="text-xs text-gray-400">{item.email}</p>
+                  )}
+                </td>
+                <td className="px-4 py-2.5">
+                  <span className="font-semibold text-gray-900 dark:text-white">{item.used.value}</span>
+                  <span className="text-xs text-gray-400 ml-1">{item.used.unit}</span>
+                </td>
+                <td className="px-4 py-2.5 text-gray-500 text-sm">
+                  {item.quota.value > 0 ? <>{item.quota.value} <span className="text-xs">{item.quota.unit}</span></> : '—'}
+                </td>
+                <td className="px-4 py-2.5">
+                  {item.quota.bytes > 0 ? <UsagePct pct={item.pct} /> : <span className="text-xs text-gray-400">—</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="text-xs text-gray-400 px-4 py-2 border-t border-gray-100 dark:border-gray-800">
+          {data.count} users · data from last {period.replace('D', '')} days
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Controls */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex gap-1">
+          {[
+            { key: 'onedrive', label: 'OneDrive' },
+            { key: 'mailbox',  label: 'Mailbox' },
+          ].map(s => (
+            <button key={s.key} onClick={() => setSection(s.key)}
+              className={cn('px-3 py-1.5 text-sm font-medium rounded-lg transition-colors',
+                section === s.key ? 'bg-brand text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700')}>
+              {s.label}
+              {s.key === 'onedrive' && onedrive && <span className="ml-1.5 text-xs opacity-70">({onedrive.count})</span>}
+              {s.key === 'mailbox'  && mailbox   && <span className="ml-1.5 text-xs opacity-70">({mailbox.count})</span>}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-400">Period:</span>
+          {['D7','D30','D90','D180'].map(p => (
+            <button key={p} onClick={() => changePeriod(p)}
+              className={cn('px-2.5 py-1 text-xs font-medium rounded transition-colors',
+                period === p ? 'bg-brand text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700')}>
+              {p.replace('D', '')}d
+            </button>
+          ))}
+          <button onClick={() => load()} className="p-1.5 text-gray-400 hover:text-brand rounded transition-colors">
+            <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+          </button>
+        </div>
+      </div>
+
+      {error && <AlertBox type="error">{error}</AlertBox>}
+
+      {loading
+        ? <div className="flex justify-center py-12"><Spinner className="w-6 h-6" /></div>
+        : (
+          <Card>
+            {section === 'onedrive' && <StorageTable data={onedrive} emptyMsg="No OneDrive data available" />}
+            {section === 'mailbox'  && <StorageTable data={mailbox}  emptyMsg="No mailbox data available" />}
+          </Card>
+        )
+      }
+    </div>
+  )
+}
 
 // ── Config modal ──────────────────────────────────────────────────────────────
 function ConfigModal({ config, onSave, onClose }) {
@@ -384,6 +518,9 @@ export default function M365Page() {
                 }
               </Card>
             )}
+
+            {/* STORAGE */}
+            {activeTab === 'storage' && <StorageTab />}
 
             {/* HEALTH */}
             {activeTab === 'health' && (
