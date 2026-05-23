@@ -365,11 +365,84 @@ function ProxmoxTab() {
   )
 }
 
+
+// ── Tab 4: M365 Service Health ────────────────────────────────────────────────
+function M365Tab() {
+  const [data,    setData]    = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetchPublic('/api/m365/health/public')
+      .then(d => setData(d))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <div className="flex justify-center py-12"><RefreshCw className="w-6 h-6 text-gray-500 animate-spin" /></div>
+  if (!data?.configured) return (
+    <p className="text-center text-gray-500 py-12">Microsoft 365 not configured</p>
+  )
+
+  const STATUS_DOT_M365 = (status) => {
+    if (!status || status === 'serviceOperational') return 'bg-green-500'
+    if (status.includes('Degraded') || status.includes('Advisory') || status.includes('Warning')) return 'bg-yellow-500'
+    return 'bg-red-500 animate-pulse'
+  }
+
+  const issueCount = data.services.filter(s => s.active_issues > 0).length
+  const allOk      = issueCount === 0
+
+  return (
+    <div className="space-y-4">
+      {/* Overall banner */}
+      <div className={cn('rounded-xl border p-4 text-center',
+        allOk ? 'bg-green-900/20 border-green-800' : 'bg-yellow-900/20 border-yellow-800')}>
+        <div className="flex items-center justify-center gap-2">
+          <span className={cn('w-3 h-3 rounded-full', allOk ? 'bg-green-500' : 'bg-yellow-500')} />
+          <span className={cn('font-semibold', allOk ? 'text-green-300' : 'text-yellow-300')}>
+            {allOk ? 'All Microsoft 365 services operational' : `${issueCount} service${issueCount > 1 ? 's' : ''} with issues`}
+          </span>
+        </div>
+      </div>
+
+      {/* Services list */}
+      <div className="bg-gray-900 rounded-xl border border-gray-800 divide-y divide-gray-800">
+        {[...data.services]
+          .sort((a, b) => b.active_issues - a.active_issues)
+          .map(s => (
+            <div key={s.service} className="px-5 py-3">
+              <div className="flex items-center gap-3">
+                <span className={cn('w-2.5 h-2.5 rounded-full flex-shrink-0', STATUS_DOT_M365(s.status))} />
+                <span className="text-sm font-medium text-white flex-1">{s.service}</span>
+                {s.active_issues === 0
+                  ? <span className="text-xs text-green-400">Operational</span>
+                  : <span className="text-xs font-semibold px-2 py-0.5 rounded bg-yellow-900/50 text-yellow-400 border border-yellow-700">
+                      {s.active_issues} issue{s.active_issues > 1 ? 's' : ''}
+                    </span>
+                }
+              </div>
+              {s.issues?.map((issue, i) => (
+                <div key={i} className="mt-2 ml-6 pl-3 border-l-2 border-yellow-700">
+                  <p className="text-xs font-medium text-gray-300">{issue.title}</p>
+                  {issue.impactDescription && (
+                    <p className="text-xs text-gray-500 mt-0.5">{issue.impactDescription}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  )
+}
+
 // ── Main Status Page ──────────────────────────────────────────────────────────
 const TABS = [
   { key: 'uptime',  label: 'Uptime Monitor' },
   { key: 'network', label: 'Network' },
   { key: 'proxmox', label: 'Proxmox' },
+  { key: 'm365',    label: 'M365 Health' },
 ]
 
 export default function StatusPage() {
@@ -428,6 +501,7 @@ export default function StatusPage() {
         {tab === 'uptime'  && <UptimeTab  key={`uptime-${tick}`} />}
         {tab === 'network' && <NetworkTab key={`network-${tick}`} />}
         {tab === 'proxmox' && <ProxmoxTab key={`proxmox-${tick}`} />}
+        {tab === 'm365'    && <M365Tab    key={`m365-${tick}`} />}
       </div>
 
       <div className="text-center py-6 text-xs text-gray-600">
