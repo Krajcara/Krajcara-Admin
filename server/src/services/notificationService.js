@@ -185,18 +185,14 @@ async function checkRouters() {
 
 // ── DNS server check ──────────────────────────────────────────────────────────
 async function checkDnsServers() {
-  const dnsLib  = require('dns').promises;
+  const { execSync } = require('child_process');
   const servers = db.prepare('SELECT * FROM dns_local').all();
   for (const s of servers) {
-    const dnsIp = s.ip.replace(/^https?:\/\//, '').split(':')[0];
+    // Extract hostname/IP — strip protocol and port
+    const host = s.ip.replace(/^https?:\/\//, '').split(':')[0].split('/')[0];
     let online = false;
     try {
-      const resolver = new dnsLib.Resolver();
-      resolver.setServers([dnsIp]);
-      await new Promise((resolve, reject) => {
-        const t = setTimeout(() => reject(new Error('timeout')), 3000);
-        resolver.resolve4('cloudflare.com', (err) => { clearTimeout(t); err ? reject(err) : resolve(); });
-      });
+      execSync(`ping -c 1 -W 3 ${host}`, { timeout: 5000 });
       online = true;
     } catch {}
 
