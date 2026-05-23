@@ -4,7 +4,7 @@ import NotificationBell from './NotificationBell'
 import {
   LayoutDashboard, Shield, LogOut, Sun, Moon, Menu, User,
   Users, Settings, BookOpen, KeyRound, RefreshCw, Activity, Network, Globe,
-  Server, Scan, CalendarClock, Wifi, Cloud, HardDrive, ChevronDown
+  Server, Scan, CalendarClock, Wifi, Cloud, HardDrive, ChevronDown, MapPin
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useThemeStore } from '../../store/themeStore'
@@ -36,6 +36,7 @@ const NAV_GROUPS = [
       { to: '/proxmox',    label: 'Proxmox',          icon: Server },
       { to: '/scanner',    label: 'Network Scanner',  icon: Scan },
       { to: '/automation', label: 'Scan Automation',  icon: CalendarClock },
+      { to: '/ipspace',    label: 'IP Space',          icon: MapPin },
     ],
   },
   {
