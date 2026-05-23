@@ -121,8 +121,10 @@ app.get('/api/m365/health/public', async (req, res) => {
     res.json({ configured: false, error: err.message });
   }
 });
+// Public DNS endpoint
+app.get('/api/dns/public', async (req, res) => {
+  try {
   const db  = require('./db/database');
-  const dns = require('./routes/dns');
   // Local DNS servers
   const localServers = db.prepare('SELECT id, role, type, ip, label FROM dns_local ORDER BY role').all();
   const localResults = await Promise.all(localServers.map(async s => {
@@ -155,6 +157,7 @@ app.get('/api/m365/health/public', async (req, res) => {
     } catch { return { domain, online: false }; }
   }));
   res.json({ local: localResults, domains: domainResults });
+  } catch (err) { res.json({ local: [], domains: [], error: err.message }); }
 });
 app.get('/api/netspeed/public', (req, res) => {
   const db = require('./db/database');
