@@ -352,3 +352,39 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_notif_read    ON notifications(read);
   CREATE INDEX IF NOT EXISTS idx_notif_created ON notifications(created_at);
 `);
+
+// Phase 7 — Network Management tables
+db.exec(`
+  CREATE TABLE IF NOT EXISTS vlans (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    vlan_id     INTEGER NOT NULL UNIQUE,
+    name        TEXT NOT NULL,
+    description TEXT,
+    subnet      TEXT,
+    gateway     TEXT,
+    dhcp_start  TEXT,
+    dhcp_end    TEXT,
+    purpose     TEXT DEFAULT 'production',
+    color       TEXT DEFAULT '#6366f1',
+    router_id   INTEGER,
+    created_at  TEXT DEFAULT (datetime('now')),
+    updated_at  TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (router_id) REFERENCES routers(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS ip_addresses (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ip_address  TEXT NOT NULL,
+    hostname    TEXT,
+    mac_address TEXT,
+    vlan_id     INTEGER,
+    purpose     TEXT DEFAULT 'other',
+    description TEXT,
+    last_seen   TEXT,
+    last_status TEXT DEFAULT 'unknown',
+    created_at  TEXT DEFAULT (datetime('now')),
+    updated_at  TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (vlan_id) REFERENCES vlans(id) ON DELETE SET NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_ip_address ON ip_addresses(ip_address);
+`);
