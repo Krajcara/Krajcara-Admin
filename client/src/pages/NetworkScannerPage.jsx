@@ -208,7 +208,6 @@ export default function NetworkScannerPage() {
   const loadDiff = async (scanId) => {
     setDiffScanId(scanId); setDiffLoading(true); setDiffData(null)
     try {
-      // Compare open ports with previous scan
       const scan = await api.get(`/scanner/scans/${scanId}`)
       const allScans = await api.get(`/scanner/scans?host_id=${scan.data.host_id}&limit=50`)
       const sortedDone = (allScans.data.scans || []).filter(s => s.status === 'done').sort((a,b) => b.id - a.id)
@@ -218,18 +217,83 @@ export default function NetworkScannerPage() {
       if (!prev) { setDiffData({ hasPrevious: false }); return }
 
       const prevScan = await api.get(`/scanner/scans/${prev.id}`)
-      const currentPorts = (scan.data.results || []).flatMap(r => (r.ports||[]).filter(p=>p.state==='open').map(p=>`${p.port_number}/${p.protocol}`))
-      const prevPorts    = (prevScan.data.results || []).flatMap(r => (r.ports||[]).filter(p=>p.state==='open').map(p=>`${p.port_number}/${p.protocol}`))
-      const newPorts     = currentPorts.filter(p => !prevPorts.includes(p))
-      const closedPorts  = prevPorts.filter(p => !currentPorts.includes(p))
+
+      // Build port maps: "ip:port/proto" -> { service, product, version }
+      const buildPortMap = (results) => {
+        const map = {}
+        for (const r of (results || [])) {
+          for (const p of (r.ports || []).filter(x => x.state === 'open')) {
+            const key = `${r.ip_address}:${p.port_number}/${p.protocol}`
+            map[key] = {
+              ip:      r.ip_address,
+              port:    p.port_number,
+              proto:   p.protocol,
+              service: p.service,
+              product: p.product,
+              version: p.version,
+            }
+          }
+        }
+        return map
+      }
+
+      // Build host maps
+      const buildHostMap = (results) => {
+        const map = {}
+        for (const r of (results || [])) if (r.ip_address) map[r.ip_address] = r
+        return map
+      }
+
+      const curPorts  = buildPortMap(scan.data.results)
+      const prevPorts = buildPortMap(prevScan.data.results)
+      const curHosts  = buildHostMap(scan.data.results)
+      const prevHosts = buildHostMap(prevScan.data.results)
+
+      const changes = []
+
+      // New hosts
+      for (const ip of Object.keys(curHosts)) {
+        if (!prevHosts[ip]) changes.push({ type: 'new_host', ip, host: curHosts[ip] })
+      }
+      // Gone hosts
+      for (const ip of Object.keys(prevHosts)) {
+        if (!curHosts[ip]) changes.push({ type: 'gone_host', ip, host: prevHosts[ip] })
+      }
+      // Port changes
+      for (const key of Object.keys(curPorts)) {
+        if (!prevPorts[key]) {
+          changes.push({ type: 'new_port', ...curPorts[key] })
+        } else {
+          const cur  = curPorts[key]
+          const prev = prevPorts[key]
+          const curVer  = [cur.product,  cur.version].filter(Boolean).join(' ')
+          const prevVer = [prev.product, prev.version].filter(Boolean).join(' ')
+          if (curVer && prevVer && curVer !== prevVer) {
+            changes.push({ type: 'version_change', ...cur, prev_version: prevVer, new_version: curVer })
+          }
+        }
+      }
+      for (const key of Object.keys(prevPorts)) {
+        if (!curPorts[key]) changes.push({ type: 'closed_port', ...prevPorts[key] })
+      }
+
+      // Sort: hosts first, then by IP, then by port
+      changes.sort((a, b) => {
+        if (a.ip !== b.ip) return (a.ip || '').localeCompare(b.ip || '')
+        return (a.port || 0) - (b.port || 0)
+      })
 
       setDiffData({
         hasPrevious: true,
-        summary: { new: newPorts.length, closed: closedPorts.length },
-        changes: [
-          ...newPorts.map(p => ({ port: p, change: 'new' })),
-          ...closedPorts.map(p => ({ port: p, change: 'closed' })),
-        ]
+        prevScanId: prev.id,
+        summary: {
+          new_hosts:      changes.filter(c => c.type === 'new_host').length,
+          gone_hosts:     changes.filter(c => c.type === 'gone_host').length,
+          new_ports:      changes.filter(c => c.type === 'new_port').length,
+          closed_ports:   changes.filter(c => c.type === 'closed_port').length,
+          version_changes:changes.filter(c => c.type === 'version_change').length,
+        },
+        changes,
       })
     } catch { setDiffData({ hasPrevious: false }) }
     finally { setDiffLoading(false) }
@@ -478,31 +542,83 @@ export default function NetworkScannerPage() {
         </div>
       </Modal>
 
-      {/* Diff modal */}
       <Modal open={!!diffScanId} onClose={() => setDiffScanId(null)} title="Changes since previous scan" size="md">
         {diffLoading && <div className="flex justify-center py-8"><Spinner className="w-6 h-6" /></div>}
         {diffData && !diffLoading && (
-          !diffData.hasPrevious ? <p className="text-sm text-gray-500 py-4">No previous scan to compare.</p>
-          : diffData.changes.length === 0 ? <p className="text-sm text-gray-500 py-4 text-center">No changes detected.</p>
-          : (
-            <div className="space-y-3">
-              <div className="flex gap-4 text-sm">
-                <span>New: <strong className="text-green-600">{diffData.summary.new}</strong></span>
-                <span>Closed: <strong className="text-red-600">{diffData.summary.closed}</strong></span>
-              </div>
-              {diffData.changes.map((c, i) => (
-                <div key={i} className={cn('px-4 py-2.5 rounded-r-lg text-sm border-l-4',
-                  c.change === 'new' ? 'bg-green-50 dark:bg-green-900/20 border-green-500' : 'bg-red-50 dark:bg-red-900/20 border-red-500')}>
-                  <div className="flex items-center gap-2">
-                    <Badge className={c.change === 'new' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'}>
-                      {c.change}
-                    </Badge>
-                    <span className="font-mono font-medium">{c.port}</span>
+          !diffData.hasPrevious
+            ? <p className="text-sm text-gray-500 py-4">No previous scan to compare.</p>
+            : diffData.changes.length === 0
+              ? <p className="text-sm text-gray-500 py-4 text-center">No changes detected.</p>
+              : (
+                <div className="space-y-3">
+                  {/* Summary */}
+                  <div className="flex gap-3 flex-wrap text-sm">
+                    {diffData.summary.new_hosts       > 0 && <span className="text-green-600 font-medium">+{diffData.summary.new_hosts} host{diffData.summary.new_hosts>1?'s':''}</span>}
+                    {diffData.summary.gone_hosts      > 0 && <span className="text-red-500 font-medium">-{diffData.summary.gone_hosts} host{diffData.summary.gone_hosts>1?'s':''}</span>}
+                    {diffData.summary.new_ports       > 0 && <span className="text-green-600 font-medium">+{diffData.summary.new_ports} port{diffData.summary.new_ports>1?'s':''}</span>}
+                    {diffData.summary.closed_ports    > 0 && <span className="text-red-500 font-medium">-{diffData.summary.closed_ports} port{diffData.summary.closed_ports>1?'s':''}</span>}
+                    {diffData.summary.version_changes > 0 && <span className="text-yellow-600 font-medium">~{diffData.summary.version_changes} version{diffData.summary.version_changes>1?'s':''}</span>}
+                  </div>
+
+                  {/* Changes list */}
+                  <div className="space-y-1.5 max-h-96 overflow-y-auto">
+                    {diffData.changes.map((c, i) => {
+                      if (c.type === 'new_host') return (
+                        <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+                          <span className="text-green-600 font-bold text-xs w-4">+</span>
+                          <span className="font-mono text-sm font-semibold text-green-700 dark:text-green-300">{c.ip}</span>
+                          {c.host?.hostname && <span className="text-xs text-gray-500">({c.host.hostname})</span>}
+                          <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 text-xs ml-auto">new host</Badge>
+                        </div>
+                      )
+                      if (c.type === 'gone_host') return (
+                        <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                          <span className="text-red-500 font-bold text-xs w-4">-</span>
+                          <span className="font-mono text-sm font-semibold text-red-600 dark:text-red-400">{c.ip}</span>
+                          <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 text-xs ml-auto">gone</Badge>
+                        </div>
+                      )
+                      if (c.type === 'new_port') return (
+                        <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+                          <span className="text-green-600 font-bold text-xs w-4">+</span>
+                          <span className="font-mono text-xs text-gray-500">{c.ip}</span>
+                          <span className="font-mono text-sm font-semibold text-green-700 dark:text-green-300">{c.port}/{c.proto}</span>
+                          <span className="text-xs text-gray-500">{c.service}</span>
+                          {[c.product, c.version].filter(Boolean).length > 0 && (
+                            <span className="text-xs text-gray-400">{[c.product, c.version].filter(Boolean).join(' ')}</span>
+                          )}
+                        </div>
+                      )
+                      if (c.type === 'closed_port') return (
+                        <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 opacity-75">
+                          <span className="text-red-500 font-bold text-xs w-4">-</span>
+                          <span className="font-mono text-xs text-gray-500">{c.ip}</span>
+                          <span className="font-mono text-sm font-semibold text-red-600 dark:text-red-400">{c.port}/{c.proto}</span>
+                          <span className="text-xs text-gray-500">{c.service}</span>
+                        </div>
+                      )
+                      if (c.type === 'version_change') return (
+                        <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800">
+                          <span className="text-yellow-600 font-bold text-xs w-4 mt-0.5">~</span>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-xs text-gray-500">{c.ip}</span>
+                              <span className="font-mono text-sm font-semibold text-yellow-700 dark:text-yellow-300">{c.port}/{c.proto}</span>
+                              <span className="text-xs text-gray-500">{c.service}</span>
+                            </div>
+                            <p className="text-xs mt-0.5">
+                              <span className="text-red-500 line-through">{c.prev_version}</span>
+                              <span className="text-gray-400 mx-1">→</span>
+                              <span className="text-green-600">{c.new_version}</span>
+                            </p>
+                          </div>
+                        </div>
+                      )
+                      return null
+                    })}
                   </div>
                 </div>
-              ))}
-            </div>
-          )
+              )
         )}
       </Modal>
     </div>
