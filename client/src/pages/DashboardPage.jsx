@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Activity, Server, KeyRound, AppWindow,
-  RefreshCw, Wifi, WifiOff, Download, Upload, CheckCircle
+  RefreshCw, Wifi, WifiOff, Download, Upload, CheckCircle, Globe
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle, Spinner, Badge } from '../components/shared/UI'
 import { cn } from '../lib/utils'
@@ -201,6 +201,65 @@ function ProxmoxRow({ proxmox }) {
   )
 }
 
+
+// ── DNS Row ───────────────────────────────────────────────────────────────────
+function DnsRow({ dnsServers }) {
+  const [statuses, setStatuses] = useState({})
+
+  useEffect(() => {
+    if (!dnsServers?.length) return
+    dnsServers.forEach(s => {
+      api.get(`/dns/local/${s.id}/status`)
+        .then(r => setStatuses(p => ({ ...p, [s.id]: r.data })))
+        .catch(() => setStatuses(p => ({ ...p, [s.id]: { online: false } })))
+    })
+  }, [dnsServers])
+
+  if (!dnsServers?.length) return null
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle>Local DNS</CardTitle>
+          <span className="text-xs text-gray-400">{dnsServers.length} server{dnsServers.length !== 1 ? 's' : ''}</span>
+        </div>
+      </CardHeader>
+      <div className="px-5 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {dnsServers.map(s => {
+          const st = statuses[s.id]
+          const online = st?.online
+          return (
+            <div key={s.id} className="flex items-center gap-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg px-4 py-3">
+              <span className={cn('w-2.5 h-2.5 rounded-full flex-shrink-0',
+                st === undefined ? 'bg-gray-300 dark:bg-gray-600' : online ? 'bg-green-500' : 'bg-red-500 animate-pulse')} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                  {s.label || s.type} <span className={cn('text-xs font-semibold uppercase ml-1',
+                    s.role === 'primary' ? 'text-brand' : 'text-gray-400')}>{s.role}</span>
+                </p>
+                <p className="text-xs text-gray-400 font-mono">{s.ip}</p>
+              </div>
+              <div className="flex-shrink-0">
+                {st === undefined ? (
+                  <span className="text-xs text-gray-400">Checking...</span>
+                ) : online ? (
+                  <span className="text-xs font-medium text-green-600 dark:text-green-400">Online</span>
+                ) : (
+                  <span className="text-xs font-medium text-red-500">Offline</span>
+                )}
+                {st?.stats && (
+                  <p className="text-xs text-gray-400 text-right">{st.stats.totalQueries?.toLocaleString()} q/h</p>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </Card>
+  )
+}
+
 // ── Row 3: Net Speed + Monitors ───────────────────────────────────────────────
 function BottomRow({ lastSpeed, monitors, monitorStatuses }) {
   return (
@@ -295,6 +354,7 @@ export default function DashboardPage() {
   const [licences,         setLicences]          = useState([])
   const [entraApps,        setEntraApps]         = useState([])
   const [lastSpeed,        setLastSpeed]         = useState(null)
+  const [dns,              setDns]               = useState(null)
   const [loading,          setLoading]           = useState(true)
   const [lastRefresh,      setLastRefresh]       = useState(null)
 
@@ -307,12 +367,13 @@ export default function DashboardPage() {
 
   const loadAll = useCallback(async () => {
     try {
-      const [monitorsRes, proxmoxRes, licencesRes, entraRes, speedRes] = await Promise.allSettled([
+      const [monitorsRes, proxmoxRes, licencesRes, entraRes, speedRes, dnsRes] = await Promise.allSettled([
         api.get('/monitors'),
         api.get('/proxmox/nodes'),
         api.get('/licences'),
         api.get('/licences/entra-apps'),
         api.get('/netspeed/tests?limit=1'),
+        api.get('/dns/local'),
       ])
 
       if (monitorsRes.status === 'fulfilled') {
@@ -330,6 +391,7 @@ export default function DashboardPage() {
         const tests = speedRes.value.data || []
         setLastSpeed(tests.find(t => t.status === 'done') || null)
       }
+      if (dnsRes.status      === 'fulfilled') setDns(dnsRes.value.data || [])
       setLastRefresh(new Date())
     } catch {}
     finally { setLoading(false) }
@@ -365,6 +427,8 @@ export default function DashboardPage() {
       />
 
       <ProxmoxRow proxmox={proxmox} />
+
+      <DnsRow dnsServers={dns} />
 
       <BottomRow
         lastSpeed={lastSpeed}
