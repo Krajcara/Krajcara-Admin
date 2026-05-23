@@ -1,58 +1,102 @@
-import { useState } from 'react'
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import NotificationBell from './NotificationBell'
 import {
   LayoutDashboard, Shield, LogOut, Sun, Moon, Menu, User,
   Users, Settings, BookOpen, KeyRound, RefreshCw, Activity, Network, Globe,
-  Server, Scan, CalendarClock, Wifi, Cloud, HardDrive
+  Server, Scan, CalendarClock, Wifi, Cloud, HardDrive, ChevronDown
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useThemeStore } from '../../store/themeStore'
 import { cn, roleColor } from '../../lib/utils'
 
-const NAV_ITEMS = [
-  { to: '/',          label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { separator: true,  label: 'Inventory' },
-  { to: '/licences',  label: 'Licences',  icon: KeyRound },
-  { separator: true,  label: 'Network' },
-  { to: '/monitors',  label: 'Uptime Monitor', icon: Activity },
-  { to: '/routers',   label: 'Routers',   icon: Network },
-  { to: '/dns',       label: 'DNS',       icon: Globe },
-  { to: '/netspeed',  label: 'Net Speed',  icon: Wifi },
-  { separator: true,  label: 'Advanced' },
-  { to: '/m365',       label: 'Microsoft 365', icon: Cloud },
-  { to: '/backup',     label: 'Backup',        icon: HardDrive, roles: ['superadmin'] },
-  { separator: true,  label: 'Account' },
-  { to: '/profile',   label: 'Profile',   icon: User },
-  { separator: true,  label: 'Infrastructure' },
-  { to: '/proxmox',    label: 'Proxmox',          icon: Server },
-  { to: '/scanner',    label: 'Network Scanner',   icon: Scan },
-  { to: '/automation', label: 'Scan Automation',   icon: CalendarClock },
-  { separator: true,  label: 'Admin' },
-  { to: '/users',     label: 'Users',     icon: Users,    roles: ['superadmin', 'admin'] },
-  { to: '/audit',     label: 'Audit Log', icon: BookOpen, roles: ['superadmin', 'admin'] },
-  { to: '/settings',  label: 'Settings',  icon: Settings, roles: ['superadmin', 'admin'] },
+// ── Nav structure ─────────────────────────────────────────────────────────────
+const NAV_GROUPS = [
+  {
+    key:   'inventory',
+    label: 'Inventory',
+    items: [
+      { to: '/licences',   label: 'Licences',         icon: KeyRound },
+    ],
+  },
+  {
+    key:   'network',
+    label: 'Network',
+    items: [
+      { to: '/monitors',   label: 'Uptime Monitor',   icon: Activity },
+      { to: '/routers',    label: 'Routers',          icon: Network },
+      { to: '/dns',        label: 'DNS',              icon: Globe },
+      { to: '/netspeed',   label: 'Net Speed',        icon: Wifi },
+    ],
+  },
+  {
+    key:   'infrastructure',
+    label: 'Infrastructure',
+    items: [
+      { to: '/proxmox',    label: 'Proxmox',          icon: Server },
+      { to: '/scanner',    label: 'Network Scanner',  icon: Scan },
+      { to: '/automation', label: 'Scan Automation',  icon: CalendarClock },
+    ],
+  },
+  {
+    key:   'advanced',
+    label: 'Advanced',
+    items: [
+      { to: '/m365',       label: 'Microsoft 365',    icon: Cloud },
+      { to: '/backup',     label: 'Backup',           icon: HardDrive, roles: ['superadmin'] },
+    ],
+  },
+  {
+    key:   'account',
+    label: 'Account',
+    items: [
+      { to: '/profile',    label: 'Profile',          icon: User },
+    ],
+  },
+  {
+    key:   'admin',
+    label: 'Admin',
+    roles: ['superadmin', 'admin'],
+    items: [
+      { to: '/users',      label: 'Users',            icon: Users,    roles: ['superadmin', 'admin'] },
+      { to: '/audit',      label: 'Audit Log',        icon: BookOpen, roles: ['superadmin', 'admin'] },
+      { to: '/settings',   label: 'Settings',         icon: Settings, roles: ['superadmin', 'admin'] },
+    ],
+  },
 ]
 
 export default function Layout() {
-  const { user, logout }  = useAuthStore()
-  const { dark, toggle }  = useThemeStore()
-  const navigate          = useNavigate()
-  const [open, setOpen]   = useState(false)
+  const { user, logout } = useAuthStore()
+  const { dark, toggle } = useThemeStore()
+  const navigate         = useNavigate()
+  const location         = useLocation()
+  const [mobileOpen, setMobileOpen] = useState(false)
+  // All groups closed by default — null means nothing open
+  const [openGroup, setOpenGroup] = useState(null)
 
-  const handleLogout = async () => {
-    await logout()
-    navigate('/login')
+  // When route changes — open the group that contains the active route
+  // but only if we're not on dashboard (dashboard has no group)
+  useEffect(() => {
+    const path = location.pathname
+    if (path === '/') { setOpenGroup(null); return; }
+    for (const group of NAV_GROUPS) {
+      if (group.items.some(item => path.startsWith(item.to))) {
+        setOpenGroup(group.key)
+        return
+      }
+    }
+  }, [location.pathname])
+
+  const handleLogout = async () => { await logout(); navigate('/login') }
+
+  const toggleGroup = (key) => {
+    setOpenGroup(prev => prev === key ? null : key)
   }
-
-  const filteredNav = NAV_ITEMS.filter(item =>
-    item.separator || !item.roles || item.roles.includes(user?.role)
-  )
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-200 dark:border-gray-800">
+      <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
         <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center flex-shrink-0">
           <Shield className="w-5 h-5 text-white" />
         </div>
@@ -60,38 +104,90 @@ export default function Layout() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {filteredNav.map((item, i) => {
-          if (item.separator) return (
-              <div key={i} className="pt-2 pb-1">
-                <div className="border-t border-gray-200 dark:border-gray-800 mb-1" />
-                {item.label && <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mt-1">{item.label}</p>}
-              </div>
-            )
+      <nav className="flex-1 px-3 py-3 overflow-y-auto space-y-0.5">
+
+        {/* Dashboard — always visible, not in any group */}
+        <NavLink
+          to="/"
+          end
+          onClick={() => { setMobileOpen(false); setOpenGroup(null) }}
+          className={({ isActive }) => cn(
+            'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+            isActive
+              ? 'bg-brand text-white'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white'
+          )}
+        >
+          <LayoutDashboard className="w-4 h-4 flex-shrink-0" />
+          Dashboard
+        </NavLink>
+
+        {/* Groups */}
+        {NAV_GROUPS.map(group => {
+          // Filter items by role
+          const visibleItems = group.items.filter(item =>
+            !item.roles || item.roles.includes(user?.role)
+          )
+          // Hide group if no visible items
+          if (visibleItems.length === 0) return null
+          // Hide group itself if group has role restriction
+          if (group.roles && !group.roles.includes(user?.role)) return null
+
+          const isOpen   = openGroup === group.key
+          const isActive = visibleItems.some(item => location.pathname.startsWith(item.to))
+
           return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.exact}
-              onClick={() => setOpen(false)}
-              className={({ isActive }) => cn(
-                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                isActive
-                  ? 'bg-brand text-white'
-                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white'
+            <div key={group.key}>
+              {/* Group header */}
+              <button
+                onClick={() => toggleGroup(group.key)}
+                className={cn(
+                  'w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider transition-colors mt-1',
+                  isActive && !isOpen
+                    ? 'text-brand dark:text-brand-light bg-brand/5 dark:bg-brand/10'
+                    : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                )}
+              >
+                <span>{group.label}</span>
+                <ChevronDown className={cn(
+                  'w-3.5 h-3.5 transition-transform duration-200',
+                  isOpen && 'rotate-180'
+                )} />
+              </button>
+
+              {/* Group items */}
+              {isOpen && (
+                <div className="mt-0.5 space-y-0.5">
+                  {visibleItems.map(item => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      onClick={() => setMobileOpen(false)}
+                      className={({ isActive }) => cn(
+                        'flex items-center gap-3 pl-6 pr-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                        isActive
+                          ? 'bg-brand text-white'
+                          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white'
+                      )}
+                    >
+                      <item.icon className="w-4 h-4 flex-shrink-0" />
+                      {item.label}
+                    </NavLink>
+                  ))}
+                </div>
               )}
-            >
-              <item.icon className="w-4 h-4 flex-shrink-0" />
-              {item.label}
-            </NavLink>
+            </div>
           )
         })}
       </nav>
 
       {/* User footer */}
-      <div className="px-3 py-3 border-t border-gray-200 dark:border-gray-800">
-        <NavLink to="/profile" onClick={() => setOpen(false)}
-          className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group">
+      <div className="px-3 py-3 border-t border-gray-200 dark:border-gray-800 flex-shrink-0">
+        <NavLink
+          to="/profile"
+          onClick={() => setMobileOpen(false)}
+          className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+        >
           <div className="w-8 h-8 rounded-full bg-brand/10 dark:bg-brand/20 flex items-center justify-center flex-shrink-0">
             <User className="w-4 h-4 text-brand" />
           </div>
@@ -100,8 +196,10 @@ export default function Layout() {
             <span className={cn('text-xs px-1.5 py-0.5 rounded font-medium', roleColor(user?.role))}>{user?.role}</span>
           </div>
         </NavLink>
-        <button onClick={handleLogout}
-          className="w-full mt-1 flex items-center gap-2 px-2 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+        <button
+          onClick={handleLogout}
+          className="w-full mt-1 flex items-center gap-2 px-2 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+        >
           <LogOut className="w-4 h-4" />
           Sign out
         </button>
@@ -116,10 +214,10 @@ export default function Layout() {
         <SidebarContent />
       </aside>
 
-      {/* Mobile sidebar overlay */}
-      {open && (
+      {/* Mobile sidebar */}
+      {mobileOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} />
+          <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
           <aside className="relative w-56 h-full bg-white dark:bg-gray-900">
             <SidebarContent />
           </aside>
@@ -128,9 +226,8 @@ export default function Layout() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Top header */}
         <header className="h-14 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex items-center px-4 gap-3 flex-shrink-0">
-          <button className="lg:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" onClick={() => setOpen(true)}>
+          <button className="lg:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" onClick={() => setMobileOpen(true)}>
             <Menu className="w-5 h-5" />
           </button>
           <div className="flex-1" />
@@ -143,7 +240,6 @@ export default function Layout() {
           </NavLink>
         </header>
 
-        {/* Page content */}
         <main className="flex-1 overflow-y-auto">
           <div className="max-w-7xl mx-auto p-6">
             <Outlet />
