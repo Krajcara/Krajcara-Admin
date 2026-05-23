@@ -383,6 +383,7 @@ export default function M365Page() {
                 { key: 'overview', label: 'Overview' },
                 { key: 'users',    label: `Users${users ? ` (${users.users.length})` : ''}` },
                 { key: 'licences', label: 'Licences' },
+                { key: 'storage',  label: 'Storage', icon: HardDrive },
                 { key: 'health',   label: 'Service Health', badge: issueCount },
               ].map(t => (
                 <button key={t.key} onClick={() => setActiveTab(t.key)}
