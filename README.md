@@ -69,6 +69,19 @@ The updater:
   - Users tab: list all users with MFA status, admin roles, licences; filter by Admins / No MFA / Disabled / Shared Mailboxes; search by name or email; view group memberships per user
   - Licences tab: all subscribed SKUs with total/used/available seats and usage bar
   - Service Health tab: real-time service status for all Microsoft 365 services with active incident details
+
+  **Required API permissions** (Application type, Admin consent required):
+
+  | Permission | Purpose |
+  |---|---|
+  | `User.Read.All` | List all users, email, account status |
+  | `Directory.Read.All` | Admin roles per user, group memberships |
+  | `Organization.Read.All` | Basic tenant information |
+  | `Reports.Read.All` | Email activity, MFA statistics |
+  | `ServiceHealth.Read.All` | Microsoft 365 service health status |
+  | `UserAuthenticationMethod.Read.All` | MFA registration status per user |
+
+  **Setup:** Entra ID → App registrations → your app → API permissions → Add a permission → Microsoft Graph → Application permissions → add all 6 → **Grant admin consent**
 - **Backup & Restore** — superadmin only
   - Create manual backup (VACUUM INTO — clean copy without WAL)
   - Download current database as `.db` file
