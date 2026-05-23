@@ -13,7 +13,11 @@ export function formatDate(date) {
 
 export function timeAgo(date) {
   if (!date) return '—'
-  return formatDistanceToNow(new Date(date), { addSuffix: true })
+  // SQLite stores datetime('now') as UTC without Z suffix — add Z to parse correctly
+  const d = typeof date === 'string' && !date.includes('Z') && !date.includes('+')
+    ? new Date(date + 'Z')
+    : new Date(date)
+  return formatDistanceToNow(d, { addSuffix: true })
 }
 
 export function roleColor(role) {
