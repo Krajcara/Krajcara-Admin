@@ -231,6 +231,11 @@ export default function Layout() {
             <Menu className="w-5 h-5" />
           </button>
           <div className="flex-1" />
+          <a href="/status" target="_blank" rel="noopener noreferrer"
+            className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            title="Status page">
+            <Shield className="w-4 h-4" />
+          </a>
           <button onClick={toggle} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title={dark ? 'Light mode' : 'Dark mode'}>
             {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
