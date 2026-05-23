@@ -76,6 +76,54 @@ app.get('/api/monitors/public', (req, res) => {
   ).all();
   res.json(monitors);
 });
+// Public monitor checks — for sparkline on status page
+app.get('/api/monitors/:id/checks/public', (req, res) => {
+  const db    = require('./db/database');
+  const hours = parseInt(req.query.hours) || 3;
+  const since = new Date(Date.now() - hours * 3600 * 1000)
+    .toISOString().replace('T', ' ').substring(0, 19);
+  const checks = db.prepare(
+    'SELECT latency_ms, checked_at FROM monitor_checks WHERE monitor_id = ? AND checked_at >= ? ORDER BY checked_at ASC LIMIT 500'
+  ).all(req.params.id, since);
+  res.json(checks);
+});
+// Public DNS endpoint
+app.get('/api/dns/public', async (req, res) => {
+  const db  = require('./db/database');
+  const dns = require('./routes/dns');
+  // Local DNS servers
+  const localServers = db.prepare('SELECT id, role, type, ip, label FROM dns_local ORDER BY role').all();
+  const localResults = await Promise.all(localServers.map(async s => {
+    try {
+      const axios   = require('axios');
+      const dnsLib  = require('dns').promises;
+      const baseUrl = s.ip.startsWith('http') ? s.ip.replace(/\/$/, '') : `http://${s.ip}`;
+      const dnsIp   = s.ip.replace(/^https?:\/\//, '').split(':')[0];
+      // Quick reachability check
+      let online = false;
+      try {
+        const resolver = new dnsLib.Resolver();
+        resolver.setServers([dnsIp]);
+        await new Promise((resolve, reject) => {
+          const t = setTimeout(() => reject(new Error('timeout')), 2000);
+          resolver.resolve4('cloudflare.com', (err) => { clearTimeout(t); err ? reject(err) : resolve(); });
+        });
+        online = true;
+      } catch {}
+      return { id: s.id, role: s.role, type: s.type, ip: s.ip, label: s.label, online };
+    } catch { return { id: s.id, role: s.role, type: s.type, ip: s.ip, label: s.label, online: false }; }
+  }));
+  // External domains — just check if they resolve
+  const domains = db.prepare('SELECT domain FROM dns_domains').all().map(r => r.domain);
+  const dnsLib  = require('dns').promises;
+  const domainResults = await Promise.all(domains.slice(0, 10).map(async domain => {
+    try {
+      const ips = await dnsLib.resolve4(domain);
+      return { domain, online: ips.length > 0 };
+    } catch { return { domain, online: false }; }
+  }));
+  res.json({ local: localResults, domains: domainResults });
+});
 app.get('/api/netspeed/public', (req, res) => {
   const db = require('./db/database');
   const tests = db.prepare(
