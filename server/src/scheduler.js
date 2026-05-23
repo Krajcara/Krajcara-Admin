@@ -40,7 +40,13 @@ function start() {
     } catch (e) { console.error('[Scheduler] Auto-backup failed:', e.message); }
   });
 
-  // Hourly speed test
+  // Every 15 minutes — notification checks
+  cron.schedule('*/15 * * * *', () => {
+    try {
+      const { runNotificationChecks } = require('./services/notificationService');
+      runNotificationChecks();
+    } catch (e) { console.error('[Scheduler] Notification check error:', e.message); }
+  });
   cron.schedule('0 * * * *', () => {
     try {
       const { runScheduledTest } = require('./routes/netspeed');
