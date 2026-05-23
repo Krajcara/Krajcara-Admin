@@ -33,6 +33,7 @@ const netspeedRoutes = require('./routes/netspeed');
 const m365Routes     = require('./routes/m365');
 const { router: backupRouter, runAutoBackup } = require('./routes/backup');
 const notifRoutes    = require('./routes/notifications');
+const ipspaceRoutes  = require('./routes/ipspace');
 
 const axios = require('axios');
 
@@ -341,6 +342,7 @@ app.use('/api/netspeed',    requireAuth, netspeedRoutes.router);
 app.use('/api/m365',       requireAuth, m365Routes);
 app.use('/api/backup',     requireAuth, backupRouter);
 app.use('/api/notifications', requireAuth, notifRoutes);
+app.use('/api/ipspace',       requireAuth, ipspaceRoutes);
 
 // ── Socket.io ─────────────────────────────────────────────────────
 io.on('connection', (socket) => {
