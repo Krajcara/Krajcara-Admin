@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import NotificationBell from './NotificationBell'
 import {
   LayoutDashboard, Shield, LogOut, Sun, Moon, Menu, User,
   Users, Settings, BookOpen, KeyRound, RefreshCw, Activity, Network, Globe,
@@ -136,6 +137,7 @@ export default function Layout() {
           <button onClick={toggle} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title={dark ? 'Light mode' : 'Dark mode'}>
             {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
+          <NotificationBell />
           <NavLink to="/profile" className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="Profile">
             <User className="w-4 h-4" />
           </NavLink>
