@@ -220,4 +220,97 @@ router.get('/service-health', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Storage reports ───────────────────────────────────────────────────────────
+const csv = require('csv-parse/sync');
+
+function parseReportCsv(raw) {
+  try {
+    // Strip BOM if present
+    const clean = raw.replace(/^\uFEFF/, '').trim();
+    return csv.parse(clean, { columns: true, skip_empty_lines: true, trim: true });
+  } catch { return []; }
+}
+
+async function getReportCsv(path) {
+  const token = await getM365Token();
+  const axios = require('axios');
+  const res = await axios.get(`https://graph.microsoft.com/v1.0${path}`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json, text/plain' },
+    responseType: 'text',
+    timeout: 30000,
+  });
+  return res.data;
+}
+
+function fmtBytes(bytes) {
+  const b = parseInt(bytes) || 0;
+  if (b >= 1073741824) return { value: Math.round((b / 1073741824) * 10) / 10, unit: 'GB', bytes: b };
+  if (b >= 1048576)    return { value: Math.round((b / 1048576)    * 10) / 10, unit: 'MB', bytes: b };
+  return { value: b, unit: 'B', bytes: b };
+}
+
+// GET /api/m365/storage/onedrive?period=D30
+router.get('/storage/onedrive', async (req, res) => {
+  const period = ['D7','D30','D90','D180'].includes(req.query.period) ? req.query.period : 'D30';
+  try {
+    const raw  = await getReportCsv(`/reports/getOneDriveUsageAccountDetail(period='${period}')`);
+    const rows = parseReportCsv(raw);
+
+    const result = rows
+      .filter(r => r['Is Deleted'] !== 'True' && r['Is Deleted'] !== true)
+      .map(r => {
+        const usedKey   = Object.keys(r).find(k => k.toLowerCase().includes('storage used')) || '';
+        const quotaKey  = Object.keys(r).find(k => k.toLowerCase().includes('storage allocated')) || '';
+        const emailKey  = Object.keys(r).find(k => k.toLowerCase().includes('owner principal name') || k.toLowerCase().includes('user principal')) || '';
+        const nameKey   = Object.keys(r).find(k => k.toLowerCase().includes('owner display name') || k.toLowerCase().includes('display name')) || '';
+        const usedBytes = parseInt(r[usedKey]) || 0;
+        const quotaBytes= parseInt(r[quotaKey]) || 0;
+        return {
+          email:      r[emailKey] || '—',
+          name:       r[nameKey]  || '—',
+          used:       fmtBytes(usedBytes),
+          quota:      fmtBytes(quotaBytes),
+          pct:        quotaBytes > 0 ? Math.round((usedBytes / quotaBytes) * 100) : 0,
+          used_bytes: usedBytes,
+        };
+      })
+      .filter(r => r.used_bytes > 0)
+      .sort((a, b) => b.used_bytes - a.used_bytes);
+
+    res.json({ period, count: result.length, items: result });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/m365/storage/mailbox?period=D30
+router.get('/storage/mailbox', async (req, res) => {
+  const period = ['D7','D30','D90','D180'].includes(req.query.period) ? req.query.period : 'D30';
+  try {
+    const raw  = await getReportCsv(`/reports/getMailboxUsageDetail(period='${period}')`);
+    const rows = parseReportCsv(raw);
+
+    const result = rows
+      .filter(r => r['Is Deleted'] !== 'True' && r['Is Deleted'] !== true)
+      .map(r => {
+        const usedKey  = Object.keys(r).find(k => k.toLowerCase().includes('storage used')) || '';
+        const quotaKey = Object.keys(r).find(k => k.toLowerCase().includes('prohibit send quota') || k.toLowerCase().includes('mailbox storage quota')) || '';
+        const emailKey = Object.keys(r).find(k => k.toLowerCase().includes('user principal name')) || '';
+        const nameKey  = Object.keys(r).find(k => k.toLowerCase().includes('display name')) || '';
+        const usedBytes  = parseInt(r[usedKey]) || 0;
+        const quotaBytes = parseInt(r[quotaKey]) || 0;
+        return {
+          email:      r[emailKey] || '—',
+          name:       r[nameKey]  || '—',
+          used:       fmtBytes(usedBytes),
+          quota:      fmtBytes(quotaBytes),
+          pct:        quotaBytes > 0 ? Math.round((usedBytes / quotaBytes) * 100) : 0,
+          used_bytes: usedBytes,
+        };
+      })
+      .filter(r => r.used_bytes > 0)
+      .sort((a, b) => b.used_bytes - a.used_bytes);
+
+    res.json({ period, count: result.length, items: result });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;
