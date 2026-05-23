@@ -42,7 +42,7 @@ function MonitorCard({ monitor }) {
   const [checks, setChecks] = useState([])
 
   useEffect(() => {
-    fetch(`/api/monitors/${monitor.id}/checks?hours=3`)
+    fetch(`/api/monitors/${monitor.id}/checks/public?hours=3`)
       .then(r => r.json())
       .then(data => setChecks(data.map(c => ({ v: c.latency_ms || 0 }))))
       .catch(() => {})
