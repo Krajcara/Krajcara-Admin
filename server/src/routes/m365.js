@@ -295,8 +295,12 @@ router.get('/storage/mailbox', async (req, res) => {
         const quotaKey = Object.keys(r).find(k => k.toLowerCase().includes('prohibit send quota') || k.toLowerCase().includes('mailbox storage quota')) || '';
         const emailKey = Object.keys(r).find(k => k.toLowerCase().includes('user principal name')) || '';
         const nameKey  = Object.keys(r).find(k => k.toLowerCase().includes('display name')) || '';
-        const usedBytes  = parseInt(r[usedKey]) || 0;
-        const quotaBytes = parseInt(r[quotaKey]) || 0;
+        const rawUsed  = parseInt(r[usedKey])  || 0;
+        const rawQuota = parseInt(r[quotaKey]) || 0;
+        // Microsoft Reports API returns mailbox sizes in bytes (storage used column)
+        // but quota columns can be in KB — detect by magnitude
+        const usedBytes  = rawUsed  > 1073741824000 ? Math.round(rawUsed  / 1024) : rawUsed;  // if > 1TB likely KB
+        const quotaBytes = rawQuota > 1073741824000 ? Math.round(rawQuota / 1024) : rawQuota;
         return {
           email:      r[emailKey] || '—',
           name:       r[nameKey]  || '—',
