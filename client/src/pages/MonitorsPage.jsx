@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Trash2, Pencil, Activity, ExternalLink } from 'lucide-react'
+import { Plus, Trash2, Pencil, Activity } from 'lucide-react'
 import { LineChart, Line, ResponsiveContainer, Tooltip } from 'recharts'
 import api from '../lib/api'
 import { useSocket } from '../hooks/useSocket'
@@ -176,12 +176,7 @@ export default function MonitorsPage() {
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">Uptime Monitor</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{monitors.length} monitor{monitors.length !== 1 ? 's' : ''}</p>
         </div>
-        <div className="flex gap-2">
-          <a href="/status" target="_blank" rel="noopener noreferrer">
-            <Button variant="outline" size="sm"><ExternalLink className="w-3.5 h-3.5" />Status page</Button>
-          </a>
-          {canEdit && <Button onClick={() => setModal('add')}><Plus className="w-4 h-4" />Add monitor</Button>}
-        </div>
+        {canEdit && <Button onClick={() => setModal('add')}><Plus className="w-4 h-4" />Add monitor</Button>}
       </div>
 
       {monitors.length > 0 && (
