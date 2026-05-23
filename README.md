@@ -63,6 +63,28 @@ The updater:
   - Real-time status via Socket.io — running indicator while test is in progress
   - Requires: `npm install -g fast-cli` (done automatically by installer)
 
+### Phase 7 — Network Management
+- **IP Space** — VLAN and IP address management
+  - VLANs: VLAN ID, name, subnet, gateway, DHCP range, purpose (production/management/dmz/guest/iot/storage), color, router link; displayed as colour-coded cards
+  - IP Addresses: IP, hostname, MAC, VLAN assignment, purpose, last seen, ping on demand; search and VLAN filter
+  - Import from Network Scanner — select a completed scan, pick hosts, assign to VLAN; uses INSERT OR UPDATE (no duplicates)
+- **Network Scanner — detailed diff** — full rewrite of diff algorithm
+  - New hosts (green), gone hosts (red), new open ports with service/version, closed ports, version changes (old → new in yellow)
+  - Compares per host and per port using `product` and `version` fields from nmap results
+
+### Phase 6 — Health & Notifications
+- **Health check** — `/api/health` returns status of all services: database (response time), Proxmox (API ping), M365 (token test + expires_in), scheduler (active monitor count)
+- **In-app notifications** — bell icon in header with real-time unread badge via Socket.io; dropdown with New / Earlier sections; mark as read per item, mark all, clear read
+- **Notification triggers:**
+  - Monitor down / recovered (immediate, triggered by monitor worker on status change)
+  - Proxmox VM stopped / started (every 15 minutes via scheduler)
+  - Router offline / back online (every 15 minutes via scheduler, uses ping)
+  - DNS server offline / back online (every 15 minutes via scheduler, uses ping)
+  - Entra ID client secret expiring ≤30 days or expired (every 15 minutes via scheduler)
+- **Email notifications via M365** — configure in Settings → Notifications; requires `Mail.Send` permission on M365 App Registration; sender mailbox + recipient list; sends HTML email via Microsoft Graph `/sendMail`
+- **Sidebar accordion navigation** — all groups collapsed by default; click to open/close; only one group open at a time; active route auto-opens its group; Dashboard always visible at top
+- **Status Page link** — moved to header (shield icon), visible on all pages
+
 ### Phase 5 — Advanced
 - **Microsoft 365** — Microsoft Graph API integration via Entra ID App Registration
   - Overview: total users, active users, licensed users, MFA enabled count
@@ -205,6 +227,8 @@ krajcara-admin/
 - ✅ **Phase 3** — Network: Uptime Monitor, Routers (SNMP), DNS (Local + Cloudflare + Manual), Net Speed (MySpeed)
 - ✅ **Phase 4** — Infrastructure: Proxmox, Network Scanner, Scan Automation
 - ✅ **Phase 5** — Advanced: Microsoft 365, Backup & Restore
+- ✅ **Phase 6** — Health & Notifications
+- ✅ **Phase 7** — Network Management
 
 ## Dashboard
 
