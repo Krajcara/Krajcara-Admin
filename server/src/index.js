@@ -87,8 +87,40 @@ app.get('/api/monitors/:id/checks/public', (req, res) => {
   ).all(req.params.id, since);
   res.json(checks);
 });
-// Public DNS endpoint
-app.get('/api/dns/public', async (req, res) => {
+// Public M365 service health — no auth
+app.get('/api/m365/health/public', async (req, res) => {
+  try {
+    const db  = require('./db/database');
+    const tid = db.prepare("SELECT value FROM settings WHERE key='m365_tenant_id'").get()?.value;
+    const cid = db.prepare("SELECT value FROM settings WHERE key='m365_client_id'").get()?.value;
+    const sec = db.prepare("SELECT value FROM settings WHERE key='m365_client_secret'").get()?.value;
+    if (!tid || !cid || !sec) return res.json({ configured: false });
+    const axios = require('axios');
+    const tokenRes = await axios.post(
+      `https://login.microsoftonline.com/${tid}/oauth2/v2.0/token`,
+      new URLSearchParams({ grant_type: 'client_credentials', client_id: cid, client_secret: sec, scope: 'https://graph.microsoft.com/.default' }),
+      { timeout: 15000 }
+    );
+    const token = tokenRes.data.access_token;
+    const data  = await axios.get('https://graph.microsoft.com/v1.0/admin/serviceAnnouncement/healthOverviews?$expand=issues', {
+      headers: { Authorization: `Bearer ${token}` }, timeout: 15000
+    });
+    res.json({
+      configured: true,
+      services: (data.data.value || []).map(s => ({
+        service:       s.service,
+        status:        s.status,
+        active_issues: (s.issues || []).filter(i => i.status !== 'resolved').length,
+        issues:        (s.issues || []).filter(i => i.status !== 'resolved').slice(0, 3).map(i => ({
+          title:             i.title,
+          impactDescription: i.impactDescription?.slice(0, 120),
+        })),
+      }))
+    });
+  } catch (err) {
+    res.json({ configured: false, error: err.message });
+  }
+});
   const db  = require('./db/database');
   const dns = require('./routes/dns');
   // Local DNS servers
