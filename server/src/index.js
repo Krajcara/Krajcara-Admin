@@ -32,6 +32,9 @@ const { router: scannerRouter, initSchedules } = require('./routes/scanner');
 const netspeedRoutes = require('./routes/netspeed');
 const m365Routes     = require('./routes/m365');
 const { router: backupRouter, runAutoBackup } = require('./routes/backup');
+const notifRoutes    = require('./routes/notifications');
+
+const axios = require('axios');
 
 const app    = express();
 const server = http.createServer(app);
@@ -63,7 +66,73 @@ app.use('/api/auth/', authLimiter);
 app.use('/api/', autoAuditMiddleware);
 
 // ── Public routes ─────────────────────────────────────────────────
-app.get('/api/health', (_req, res) => res.json({ status: 'ok', version: '1.0.0', time: new Date().toISOString() }));
+app.get('/api/health', async (_req, res) => {
+  const start = Date.now();
+  const services = {};
+
+  // Database
+  try {
+    const t = Date.now();
+    db.prepare('SELECT 1').get();
+    services.database = { status: 'ok', response_ms: Date.now() - t };
+  } catch (e) { services.database = { status: 'error', error: e.message }; }
+
+  // Proxmox
+  try {
+    const url = db.prepare("SELECT value FROM settings WHERE key='proxmox_url'").get()?.value;
+    const tok = db.prepare("SELECT value FROM settings WHERE key='proxmox_api_token'").get()?.value;
+    const tid = db.prepare("SELECT value FROM settings WHERE key='proxmox_token_id'").get()?.value;
+    const usr = db.prepare("SELECT value FROM settings WHERE key='proxmox_user'").get()?.value || 'root@pam';
+    if (!url || !tok) {
+      services.proxmox = { status: 'not_configured' };
+    } else {
+      const t = Date.now();
+      const token = tid ? `${usr}!${tid}=${tok}` : tok;
+      await axios.get(`${url}/api2/json/nodes`, {
+        headers: { Authorization: `PVEAPIToken=${token}` },
+        httpsAgent: new (require('https').Agent)({ rejectUnauthorized: false }),
+        timeout: 5000
+      });
+      services.proxmox = { status: 'ok', response_ms: Date.now() - t };
+    }
+  } catch (e) { services.proxmox = { status: 'error', error: e.message }; }
+
+  // M365 token
+  try {
+    const tid = db.prepare("SELECT value FROM settings WHERE key='m365_tenant_id'").get()?.value;
+    const cid = db.prepare("SELECT value FROM settings WHERE key='m365_client_id'").get()?.value;
+    const sec = db.prepare("SELECT value FROM settings WHERE key='m365_client_secret'").get()?.value;
+    if (!tid || !cid || !sec) {
+      services.m365 = { status: 'not_configured' };
+    } else {
+      const t = Date.now();
+      const r = await axios.post(
+        `https://login.microsoftonline.com/${tid}/oauth2/v2.0/token`,
+        new URLSearchParams({ grant_type: 'client_credentials', client_id: cid, client_secret: sec, scope: 'https://graph.microsoft.com/.default' }),
+        { timeout: 8000 }
+      );
+      services.m365 = { status: 'ok', response_ms: Date.now() - t, token_expires_in: r.data.expires_in };
+    }
+  } catch (e) { services.m365 = { status: 'error', error: e.message }; }
+
+  // Scheduler
+  try {
+    const monitorCount = db.prepare('SELECT COUNT(*) as n FROM monitors WHERE enabled=1').get().n;
+    services.scheduler = { status: 'ok', active_monitors: monitorCount };
+  } catch (e) { services.scheduler = { status: 'error', error: e.message }; }
+
+  const allOk = Object.values(services).every(s => s.status === 'ok' || s.status === 'not_configured');
+  const anyError = Object.values(services).some(s => s.status === 'error');
+
+  res.json({
+    status:      anyError ? 'degraded' : allOk ? 'ok' : 'degraded',
+    version:     '1.0.0',
+    uptime:      Math.floor(process.uptime()),
+    response_ms: Date.now() - start,
+    time:        new Date().toISOString(),
+    services,
+  });
+});
 app.use('/api/auth',        authRoutes);
 app.use('/api/totp',        totpRoutes);
 app.get('/api/settings/app', settingsRoutes);
@@ -271,6 +340,7 @@ app.use('/api/scanner',     requireAuth, scannerRouter);
 app.use('/api/netspeed',    requireAuth, netspeedRoutes.router);
 app.use('/api/m365',       requireAuth, m365Routes);
 app.use('/api/backup',     requireAuth, backupRouter);
+app.use('/api/notifications', requireAuth, notifRoutes);
 
 // ── Socket.io ─────────────────────────────────────────────────────
 io.on('connection', (socket) => {
