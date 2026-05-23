@@ -127,9 +127,31 @@ async function runCheck(monitor) {
       checked_at: new Date().toISOString()
     });
     if (prevStatus && prevStatus !== 'unknown' && prevStatus !== newStatus) {
-      if (newStatus === 'down')      io.emit('monitor:down',     { monitorId: monitor.id, label: monitor.label, error: result.error_msg });
-      else if (newStatus === 'up')   io.emit('monitor:up',       { monitorId: monitor.id, label: monitor.label });
-      else if (newStatus === 'degraded') io.emit('monitor:degraded', { monitorId: monitor.id, label: monitor.label, latency: result.latency_ms });
+      if (newStatus === 'down') {
+        io.emit('monitor:down', { monitorId: monitor.id, label: monitor.label, error: result.error_msg });
+        try {
+          const { createNotification } = require('./notificationService');
+          createNotification({
+            type: 'error', module: 'monitors',
+            title: `Monitor down: ${monitor.label}`,
+            message: `${monitor.target} is not responding. ${result.error_msg || ''}`.trim(),
+            entityId: monitor.id, entityName: monitor.label,
+          });
+        } catch {}
+      } else if (newStatus === 'up') {
+        io.emit('monitor:up', { monitorId: monitor.id, label: monitor.label });
+        try {
+          const { createNotification } = require('./notificationService');
+          createNotification({
+            type: 'success', module: 'monitors',
+            title: `Monitor recovered: ${monitor.label}`,
+            message: `${monitor.target} is back online.`,
+            entityId: monitor.id, entityName: monitor.label,
+          });
+        } catch {}
+      } else if (newStatus === 'degraded') {
+        io.emit('monitor:degraded', { monitorId: monitor.id, label: monitor.label, latency: result.latency_ms });
+      }
     }
   }
 }
