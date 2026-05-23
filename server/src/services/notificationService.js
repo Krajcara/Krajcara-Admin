@@ -92,6 +92,7 @@ async function runNotificationChecks() {
     checkMonitorsDown();
     await checkRouters();
     await checkDnsServers();
+    await checkProxmoxVMs();
   } catch (e) {
     console.error('[Notifications] Check error:', e.message);
   }
@@ -222,4 +223,67 @@ async function checkDnsServers() {
   }
 }
 
-module.exports = { createNotification, runNotificationChecks, checkRouters, checkDnsServers };
+
+// ── Proxmox VM check ──────────────────────────────────────────────────────────
+async function checkProxmoxVMs() {
+  const url     = db.prepare("SELECT value FROM settings WHERE key='proxmox_url'").get()?.value;
+  const tokenId = db.prepare("SELECT value FROM settings WHERE key='proxmox_token_id'").get()?.value || '';
+  const user    = db.prepare("SELECT value FROM settings WHERE key='proxmox_user'").get()?.value || 'root@pam';
+  const secret  = db.prepare("SELECT value FROM settings WHERE key='proxmox_api_token'").get()?.value;
+  if (!url || !secret) return;
+
+  const axios      = require('axios');
+  const https      = require('https');
+  const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+  const token      = tokenId ? `${user}!${tokenId}=${secret}` : secret;
+  const headers    = { Authorization: `PVEAPIToken=${token}` };
+  const opts       = { headers, httpsAgent, timeout: 10000 };
+
+  try {
+    const nodesRes = await axios.get(`${url}/api2/json/nodes`, opts);
+    const nodes    = nodesRes.data.data || [];
+
+    for (const node of nodes) {
+      if (node.status !== 'online') continue;
+      const [vmsRes, lxcRes] = await Promise.all([
+        axios.get(`${url}/api2/json/nodes/${node.node}/qemu`, opts).catch(() => ({ data: { data: [] } })),
+        axios.get(`${url}/api2/json/nodes/${node.node}/lxc`,  opts).catch(() => ({ data: { data: [] } })),
+      ]);
+
+      const all = [
+        ...(vmsRes.data.data || []).map(v => ({ ...v, type: 'qemu' })),
+        ...(lxcRes.data.data || []).map(v => ({ ...v, type: 'lxc' })),
+      ];
+
+      for (const vm of all) {
+        const entityId  = `${node.node}-${vm.vmid}`;
+        const entityName = `${vm.name} (${node.node})`;
+        const isRunning  = vm.status === 'running';
+
+        const lastNotif = db.prepare(
+          "SELECT type FROM notifications WHERE module='proxmox' AND entity_id=? ORDER BY created_at DESC LIMIT 1"
+        ).get(entityId);
+
+        if (!isRunning && lastNotif?.type !== 'error') {
+          createNotification({
+            type: 'error', module: 'proxmox',
+            title: `VM stopped: ${vm.name}`,
+            message: `${vm.name} on node ${node.node} is ${vm.status}.`,
+            entityId, entityName,
+          });
+        } else if (isRunning && lastNotif?.type === 'error') {
+          createNotification({
+            type: 'success', module: 'proxmox',
+            title: `VM started: ${vm.name}`,
+            message: `${vm.name} on node ${node.node} is running again.`,
+            entityId, entityName,
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[Notifications] Proxmox check error:', e.message);
+  }
+}
+
+module.exports = { createNotification, runNotificationChecks, checkRouters, checkDnsServers, checkProxmoxVMs };
