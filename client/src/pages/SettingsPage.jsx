@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { Save, TestTube, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react'
+import { Save, TestTube, RefreshCw, CheckCircle, AlertCircle, Bell } from 'lucide-react'
 import api from '../lib/api'
 import { useAuthStore } from '../store/authStore'
 import { useSocket } from '../hooks/useSocket'
-import { Card, CardHeader, CardTitle, CardContent, Button, Input, AlertBox, Spinner } from '../components/shared/UI'
+import { Card, CardHeader, CardTitle, CardContent, Button, Input, AlertBox, Spinner, Toggle } from '../components/shared/UI'
 
 function SettingsSection({ title, children }) {
   return (
@@ -11,6 +11,61 @@ function SettingsSection({ title, children }) {
       <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
       <CardContent>{children}</CardContent>
     </Card>
+  )
+}
+
+// ── Notification settings ─────────────────────────────────────────────────────
+function NotificationSection() {
+  const [form,    setForm]    = useState({ email_enabled: false, email_sender: '', email_recipients: '' })
+  const [loading, setLoading] = useState(true)
+  const [saving,  setSaving]  = useState(false)
+  const [status,  setStatus]  = useState(null)
+  const f = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
+
+  useEffect(() => {
+    api.get('/notifications/settings')
+      .then(r => setForm(r.data))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const save = async (e) => {
+    e.preventDefault(); setSaving(true); setStatus(null)
+    try {
+      await api.post('/notifications/settings', form)
+      setStatus({ type: 'success', message: 'Notification settings saved' })
+    } catch { setStatus({ type: 'error', message: 'Failed to save' }) }
+    finally { setSaving(false) }
+  }
+
+  if (loading) return null
+
+  return (
+    <SettingsSection title="Notifications">
+      <form onSubmit={save} autoComplete="off" className="space-y-4 max-w-lg">
+        {status && <AlertBox type={status.type}>{status.message}</AlertBox>}
+        <Toggle
+          checked={!!form.email_enabled}
+          onChange={v => setForm(p => ({ ...p, email_enabled: v }))}
+          label="Send email notifications via Microsoft 365"
+        />
+        {form.email_enabled && <>
+          <Input label="Sender email (M365 mailbox)" autoComplete="off"
+            value={form.email_sender || ''} onChange={f('email_sender')}
+            placeholder="notifications@company.com" />
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Recipients (comma separated)</label>
+            <textarea autoComplete="off" rows={2}
+              value={form.email_recipients || ''} onChange={f('email_recipients')}
+              placeholder="admin@company.com, ops@company.com"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand resize-none" />
+          </div>
+          <AlertBox type="info">
+            Requires <strong>Mail.Send</strong> permission on the M365 App Registration.
+          </AlertBox>
+        </>}
+        <Button type="submit" loading={saving}><Save className="w-4 h-4" />Save</Button>
+      </form>
+    </SettingsSection>
   )
 }
 
@@ -243,6 +298,8 @@ export default function SettingsPage() {
           <Button loading={saving} onClick={() => save(['audit_retention_days'])}><Save className="w-4 h-4" />Save</Button>
         </div>
       </SettingsSection>
+
+      {(user?.role === 'superadmin' || user?.role === 'admin') && <NotificationSection />}
 
       {(user?.role === 'superadmin' || user?.role === 'admin') && <UpdateSection />}
     </div>
