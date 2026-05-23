@@ -90,6 +90,8 @@ async function runNotificationChecks() {
   try {
     checkEntraExpiry();
     checkMonitorsDown();
+    await checkRouters();
+    await checkDnsServers();
   } catch (e) {
     console.error('[Notifications] Check error:', e.message);
   }
@@ -143,4 +145,81 @@ function checkMonitorsDown() {
   }
 }
 
-module.exports = { createNotification, runNotificationChecks };
+
+
+// ── Router ping check ─────────────────────────────────────────────────────────
+async function checkRouters() {
+  const { execSync } = require('child_process');
+  const routers = db.prepare('SELECT * FROM routers').all();
+  for (const r of routers) {
+    let alive = false;
+    try {
+      execSync(`ping -c 1 -W 3 ${r.ip_address}`, { timeout: 5000 });
+      alive = true;
+    } catch {}
+
+    const lastStatus = db.prepare(
+      "SELECT type FROM notifications WHERE module='routers' AND entity_id=? ORDER BY created_at DESC LIMIT 1"
+    ).get(String(r.id));
+
+    if (!alive && lastStatus?.type !== 'error') {
+      // Router just went down
+      createNotification({
+        type: 'error', module: 'routers',
+        title: `Router offline: ${r.name}`,
+        message: `${r.ip_address} is not responding to ping.`,
+        entityId: r.id, entityName: r.name,
+      });
+    } else if (alive && lastStatus?.type === 'error') {
+      // Router recovered
+      createNotification({
+        type: 'success', module: 'routers',
+        title: `Router back online: ${r.name}`,
+        message: `${r.ip_address} is responding again.`,
+        entityId: r.id, entityName: r.name,
+      });
+    }
+  }
+}
+
+// ── DNS server check ──────────────────────────────────────────────────────────
+async function checkDnsServers() {
+  const dnsLib  = require('dns').promises;
+  const servers = db.prepare('SELECT * FROM dns_local').all();
+  for (const s of servers) {
+    const dnsIp = s.ip.replace(/^https?:\/\//, '').split(':')[0];
+    let online = false;
+    try {
+      const resolver = new dnsLib.Resolver();
+      resolver.setServers([dnsIp]);
+      await new Promise((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error('timeout')), 3000);
+        resolver.resolve4('cloudflare.com', (err) => { clearTimeout(t); err ? reject(err) : resolve(); });
+      });
+      online = true;
+    } catch {}
+
+    const label = s.label || `${s.role} DNS (${s.ip})`;
+    const lastStatus = db.prepare(
+      "SELECT type FROM notifications WHERE module='dns' AND entity_id=? ORDER BY created_at DESC LIMIT 1"
+    ).get(String(s.id));
+
+    if (!online && lastStatus?.type !== 'error') {
+      createNotification({
+        type: 'error', module: 'dns',
+        title: `DNS server offline: ${label}`,
+        message: `${s.ip} (${s.role}) is not responding.`,
+        entityId: s.id, entityName: label,
+      });
+    } else if (online && lastStatus?.type === 'error') {
+      createNotification({
+        type: 'success', module: 'dns',
+        title: `DNS server back online: ${label}`,
+        message: `${s.ip} (${s.role}) is responding again.`,
+        entityId: s.id, entityName: label,
+      });
+    }
+  }
+}
+
+module.exports = { createNotification, runNotificationChecks, checkRouters, checkDnsServers };
