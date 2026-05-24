@@ -56,6 +56,14 @@ function start() {
     }
   });
 
+  // Daily 04:00 — patch check
+  cron.schedule('0 4 * * *', () => {
+    try {
+      const { runPatchCheck } = require('./services/patchService');
+      runPatchCheck().catch(e => console.error('[Scheduler] Patch check error:', e.message));
+    } catch (e) { console.error('[Scheduler] Patch check init error:', e.message); }
+  });
+
   console.log('[Scheduler] Started');
 }
 
