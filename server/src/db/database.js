@@ -388,3 +388,37 @@ db.exec(`
   );
   CREATE UNIQUE INDEX IF NOT EXISTS idx_ip_address ON ip_addresses(ip_address);
 `);
+
+// Phase 8 — Patch Management
+db.exec(`
+  CREATE TABLE IF NOT EXISTS patch_status (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    node              TEXT NOT NULL,
+    vm_id             INTEGER NOT NULL,
+    vm_name           TEXT NOT NULL,
+    vm_type           TEXT NOT NULL DEFAULT 'qemu',
+    os_type           TEXT DEFAULT 'unknown',
+    package_name      TEXT NOT NULL,
+    current_version   TEXT,
+    available_version TEXT,
+    severity          TEXT DEFAULT 'unknown',
+    checked_at        TEXT DEFAULT (datetime('now')),
+    UNIQUE(node, vm_id, package_name)
+  );
+
+  CREATE TABLE IF NOT EXISTS patch_check_log (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    node       TEXT NOT NULL,
+    vm_id      INTEGER NOT NULL,
+    vm_name    TEXT NOT NULL,
+    vm_type    TEXT NOT NULL DEFAULT 'qemu',
+    os_type    TEXT DEFAULT 'unknown',
+    status     TEXT NOT NULL DEFAULT 'ok',
+    error      TEXT,
+    pkg_count  INTEGER DEFAULT 0,
+    checked_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_patch_vm ON patch_status(node, vm_id);
+  CREATE INDEX IF NOT EXISTS idx_patch_log_vm ON patch_check_log(node, vm_id);
+`);
