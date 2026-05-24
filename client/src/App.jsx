@@ -18,7 +18,8 @@ import DnsPage           from './pages/DnsPage'
 import ProxmoxPage       from './pages/ProxmoxPage'
 import NetworkScannerPage from './pages/NetworkScannerPage'
 import ScanAutomationPage from './pages/ScanAutomationPage'
-import IPSpacePage        from './pages/IPSpacePage'
+import IPSpacePage          from './pages/IPSpacePage'
+import PatchManagementPage  from './pages/PatchManagementPage'
 import NetSpeedPage       from './pages/NetSpeedPage'
 import M365Page           from './pages/M365Page'
 import BackupPage         from './pages/BackupPage'
@@ -55,6 +56,7 @@ export default function App() {
           <Route path="scanner"     element={<NetworkScannerPage />} />
           <Route path="automation"  element={<ScanAutomationPage />} />
           <Route path="ipspace"      element={<IPSpacePage />} />
+          <Route path="patches"      element={<PatchManagementPage />} />
           <Route path="netspeed"     element={<NetSpeedPage />} />
           <Route path="m365"         element={<M365Page />} />
           <Route path="backup"       element={<ProtectedRoute roles={['superadmin']}><BackupPage /></ProtectedRoute>} />
