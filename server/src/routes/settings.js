@@ -59,7 +59,7 @@ router.post('/test/smtp', requireAuth, requireRole('superadmin', 'admin'), async
 
     if (!host) return res.json({ ok: false, error: 'SMTP host not configured' });
 
-    const transporter = nodemailer.createTransporter({ host, port, secure: port === 465, auth: user ? { user, pass } : undefined, tls: { rejectUnauthorized: false } });
+    const transporter = nodemailer.createTransport({ host, port, secure: port === 465, auth: user ? { user, pass } : undefined, tls: { rejectUnauthorized: false } });
     await transporter.verify();
     res.json({ ok: true, message: 'SMTP connection successful' });
   } catch (err) {
