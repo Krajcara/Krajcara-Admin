@@ -4,7 +4,7 @@ import NotificationBell from './NotificationBell'
 import {
   LayoutDashboard, Shield, LogOut, Sun, Moon, Menu, User,
   Users, Settings, BookOpen, KeyRound, RefreshCw, Activity, Network, Globe,
-  Server, Scan, CalendarClock, Wifi, Cloud, HardDrive, ChevronDown, MapPin
+  Server, Scan, CalendarClock, Wifi, Cloud, HardDrive, ChevronDown, MapPin, Layers
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useThemeStore } from '../../store/themeStore'
@@ -37,6 +37,7 @@ const NAV_GROUPS = [
       { to: '/scanner',    label: 'Network Scanner',  icon: Scan },
       { to: '/automation', label: 'Scan Automation',  icon: CalendarClock },
       { to: '/ipspace',    label: 'IP Space',          icon: MapPin },
+      { to: '/patches',    label: 'Patch Management',  icon: Layers },
     ],
   },
   {
