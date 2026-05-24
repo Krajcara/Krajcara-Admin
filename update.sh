@@ -97,13 +97,9 @@ git -C "$INSTALL_DIR" reset --hard origin/main 2>&1 | tail -3
 success "Code updated"
 
 # ─── Reinstall dependencies ───────────────────────────────────────────────────
-info "Updating server dependencies..."
-cd "$INSTALL_DIR/server"
+info "Updating dependencies..."
+cd "$INSTALL_DIR"
 unset NODE_ENV
-npm install --silent 2>&1 | tail -3
-
-info "Updating client dependencies..."
-cd "$INSTALL_DIR/client"
 npm install --silent 2>&1 | tail -3
 
 # ─── Rebuild frontend ─────────────────────────────────────────────────────────
