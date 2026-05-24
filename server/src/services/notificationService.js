@@ -25,34 +25,13 @@ function createNotification({ type = 'info', module, title, message, entityId, e
   }
 }
 
-// ── Send email via M365 Graph ─────────────────────────────────────────────────
+// ── Send email — M365 or SMTP fallback ───────────────────────────────────────
 async function sendEmailNotification(notif) {
   const enabled = db.prepare("SELECT value FROM settings WHERE key='notif_email_enabled'").get()?.value;
   if (enabled !== '1') return;
 
   const recipients = db.prepare("SELECT value FROM settings WHERE key='notif_email_recipients'").get()?.value;
   if (!recipients) return;
-
-  const tid = db.prepare("SELECT value FROM settings WHERE key='m365_tenant_id'").get()?.value;
-  const cid = db.prepare("SELECT value FROM settings WHERE key='m365_client_id'").get()?.value;
-  const sec = db.prepare("SELECT value FROM settings WHERE key='m365_client_secret'").get()?.value;
-  const sender = db.prepare("SELECT value FROM settings WHERE key='notif_email_sender'").get()?.value;
-
-  if (!tid || !cid || !sec || !sender) return;
-
-  const axios = require('axios');
-
-  // Get M365 token
-  const tokenRes = await axios.post(
-    `https://login.microsoftonline.com/${tid}/oauth2/v2.0/token`,
-    new URLSearchParams({ grant_type: 'client_credentials', client_id: cid, client_secret: sec, scope: 'https://graph.microsoft.com/.default' }),
-    { timeout: 15000 }
-  );
-  const token = tokenRes.data.access_token;
-
-  const toAddresses = recipients.split(',').map(e => e.trim()).filter(Boolean).map(e => ({
-    emailAddress: { address: e }
-  }));
 
   const typeEmoji = { error: '🔴', warning: '🟡', info: '🔵', success: '🟢' }[notif.type] || '🔵';
   const subject   = `${typeEmoji} [Krajcara Admin] ${notif.title}`;
@@ -63,26 +42,61 @@ async function sendEmailNotification(notif) {
       ${notif.entity_name ? `<p><strong>Item:</strong> ${notif.entity_name}</p>` : ''}
       ${notif.message ? `<p>${notif.message}</p>` : ''}
       <hr style="border: 1px solid #eee; margin: 16px 0;" />
-      <p style="color: #888; font-size: 12px;">
-        Krajcara Admin · ${new Date(notif.created_at).toLocaleString('en')}
-      </p>
+      <p style="color: #888; font-size: 12px;">Krajcara Admin · ${new Date(notif.created_at).toLocaleString('en')}</p>
     </div>
   `;
 
-  await axios.post(
-    `https://graph.microsoft.com/v1.0/users/${sender}/sendMail`,
-    {
-      message: {
-        subject,
-        body: { contentType: 'HTML', content: body },
-        toRecipients: toAddresses,
-      },
-      saveToSentItems: false,
-    },
-    { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, timeout: 15000 }
-  );
+  // Try M365 first
+  const tid    = db.prepare("SELECT value FROM settings WHERE key='m365_tenant_id'").get()?.value;
+  const cid    = db.prepare("SELECT value FROM settings WHERE key='m365_client_id'").get()?.value;
+  const sec    = db.prepare("SELECT value FROM settings WHERE key='m365_client_secret'").get()?.value;
+  const sender = db.prepare("SELECT value FROM settings WHERE key='notif_email_sender'").get()?.value;
 
-  console.log(`[Notifications] Email sent: ${subject}`);
+  if (tid && cid && sec && sender) {
+    try {
+      const axios = require('axios');
+      const tokenRes = await axios.post(
+        `https://login.microsoftonline.com/${tid}/oauth2/v2.0/token`,
+        new URLSearchParams({ grant_type: 'client_credentials', client_id: cid, client_secret: sec, scope: 'https://graph.microsoft.com/.default' }),
+        { timeout: 15000 }
+      );
+      const token = tokenRes.data.access_token;
+      const toAddresses = recipients.split(',').map(e => e.trim()).filter(Boolean).map(e => ({ emailAddress: { address: e } }));
+      await axios.post(
+        `https://graph.microsoft.com/v1.0/users/${sender}/sendMail`,
+        { message: { subject, body: { contentType: 'HTML', content: body }, toRecipients: toAddresses }, saveToSentItems: false },
+        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, timeout: 15000 }
+      );
+      console.log(`[Notifications] Email sent via M365: ${subject}`);
+      return;
+    } catch (e) {
+      console.error('[Notifications] M365 email failed, trying SMTP:', e.message);
+    }
+  }
+
+  // Fallback to SMTP
+  const smtpHost = db.prepare("SELECT value FROM settings WHERE key='smtp_host'").get()?.value;
+  const smtpPort = parseInt(db.prepare("SELECT value FROM settings WHERE key='smtp_port'").get()?.value || '587');
+  const smtpUser = db.prepare("SELECT value FROM settings WHERE key='smtp_user'").get()?.value;
+  const smtpPass = db.prepare("SELECT value FROM settings WHERE key='smtp_pass'").get()?.value;
+  const smtpFrom = db.prepare("SELECT value FROM settings WHERE key='smtp_from'").get()?.value || smtpUser;
+
+  if (!smtpHost || !smtpUser) {
+    console.error('[Notifications] No email method configured (M365 or SMTP)');
+    return;
+  }
+
+  const nodemailer  = require('nodemailer');
+  const transporter = nodemailer.createTransport({
+    host: smtpHost, port: smtpPort,
+    secure: smtpPort === 465,
+    auth: { user: smtpUser, pass: smtpPass },
+    tls: { rejectUnauthorized: false },
+  });
+
+  const toList = recipients.split(',').map(e => e.trim()).filter(Boolean).join(', ');
+  await transporter.sendMail({ from: smtpFrom, to: toList, subject, html: body });
+  console.log(`[Notifications] Email sent via SMTP: ${subject}`);
 }
 
 // ── Trigger checks (called from scheduler) ───────────────────────────────────
