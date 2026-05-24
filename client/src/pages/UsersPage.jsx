@@ -2,10 +2,95 @@ import { useState, useEffect } from 'react'
 import { Plus, Pencil, Trash2, Users } from 'lucide-react'
 import api from '../lib/api'
 import { useAuthStore } from '../store/authStore'
-import { Card, Button, Modal, Input, Select, Table, Th, Td, Badge, Empty, Spinner, AlertBox } from '../components/shared/UI'
-import { roleColor, formatDate } from '../lib/utils'
+import { Card, CardHeader, CardTitle, Button, Modal, Input, Select, Table, Th, Td, Badge, Empty, Spinner, AlertBox } from '../components/shared/UI'
+import { roleColor, formatDate, cn } from '../lib/utils'
 
 const ROLES = ['superadmin', 'admin', 'operator', 'viewer']
+
+
+const ROLE_INFO = {
+  superadmin: {
+    color: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
+    permissions: [
+      'Full access to all modules',
+      'Create, edit and delete users',
+      'Delete any data (scans, monitors, VLANs...)',
+      'Backup and restore database',
+      'Configure all integrations (Proxmox, M365, DNS...)',
+      'View audit log',
+      'Manage API keys',
+      'System update',
+    ]
+  },
+  admin: {
+    color: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+    permissions: [
+      'Create and edit users (cannot delete)',
+      'Configure all integrations',
+      'Manage monitors, routers, DNS, VLANs, IP Space',
+      'Run network scans and patch checks',
+      'Manage licences and Entra ID apps',
+      'View audit log',
+      'Manage own API keys',
+      'Cannot access Backup & Restore',
+    ]
+  },
+  operator: {
+    color: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
+    permissions: [
+      'Run network scans',
+      'Add and edit monitors, hosts, schedules',
+      'Add and edit licences and IP addresses',
+      'Run speed tests and patch checks',
+      'Acknowledge alerts and notifications',
+      'Cannot manage users or settings',
+      'Cannot delete major data',
+      'Cannot access Backup & Restore',
+    ]
+  },
+  viewer: {
+    color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+    permissions: [
+      'Read-only access to all modules',
+      'View monitors, scans, VLANs, IP Space',
+      'View licences and Entra ID apps',
+      'View patch status',
+      'Cannot create, edit or delete anything',
+      'Cannot run scans or tests',
+      'Cannot access Settings or Backup',
+    ]
+  }
+}
+
+function RolesReference() {
+  return (
+    <Card className="mb-6">
+      <CardHeader>
+        <CardTitle>Role permissions</CardTitle>
+      </CardHeader>
+      <div className="px-5 pb-5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        {Object.entries(ROLE_INFO).map(([role, info]) => (
+          <div key={role} className="space-y-2">
+            <Badge className={cn('text-xs font-semibold', info.color)}>{role}</Badge>
+            <ul className="space-y-1">
+              {info.permissions.map((p, i) => (
+                <li key={i} className={cn(
+                  'text-xs flex items-start gap-1.5',
+                  p.startsWith('Cannot') ? 'text-gray-400' : 'text-gray-600 dark:text-gray-400'
+                )}>
+                  <span className={cn('mt-0.5 flex-shrink-0', p.startsWith('Cannot') ? 'text-gray-300' : 'text-green-500')}>
+                    {p.startsWith('Cannot') ? '✗' : '✓'}
+                  </span>
+                  {p}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </Card>
+  )
+}
 
 function UserForm({ initial, onSave, onCancel }) {
   const [form,    setForm]    = useState(initial || { username: '', password: '', full_name: '', email: '', role: 'viewer' })
@@ -66,6 +151,8 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6">
+      <RolesReference />
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">Users</h1>
