@@ -46,10 +46,13 @@ function NotificationSection() {
         <Toggle
           checked={!!form.email_enabled}
           onChange={v => setForm(p => ({ ...p, email_enabled: v }))}
-          label="Send email notifications via Microsoft 365"
+          label="Send email notifications"
         />
         {form.email_enabled && <>
-          <Input label="Sender email (M365 mailbox)" autoComplete="off"
+          <AlertBox type="info">
+            Emails are sent via <strong>M365</strong> (if configured) or fall back to <strong>SMTP</strong> (configured in Email section above).
+          </AlertBox>
+          <Input label="Sender email (M365 mailbox or SMTP from)" autoComplete="off"
             value={form.email_sender || ''} onChange={f('email_sender')}
             placeholder="notifications@company.com" />
           <div className="space-y-1">
@@ -59,9 +62,6 @@ function NotificationSection() {
               placeholder="admin@company.com, ops@company.com"
               className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand resize-none" />
           </div>
-          <AlertBox type="info">
-            Requires <strong>Mail.Send</strong> permission on the M365 App Registration.
-          </AlertBox>
         </>}
         <Button type="submit" loading={saving}><Save className="w-4 h-4" />Save</Button>
       </form>
