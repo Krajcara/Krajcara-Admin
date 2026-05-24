@@ -56,23 +56,60 @@ async function agentExec(url, token, node, vmid, type, command) {
 
 // ── OS detection ──────────────────────────────────────────────────────────────
 async function detectOS(url, token, node, vmid, type) {
+  // For LXC, try direct file read via Proxmox API first
+  if (type === 'lxc') {
+    try {
+      const r = await agentExec(url, token, node, vmid, type, ['cat', '/etc/os-release']);
+      if (r.exitcode === 0 && r.stdout) {
+        return parseOsRelease(r.stdout);
+      }
+    } catch {}
+    // LXC fallback: check for apt/dnf directly
+    try {
+      const r = await agentExec(url, token, node, vmid, type, ['which', 'apt-get']);
+      if (r.exitcode === 0) return 'apt';
+    } catch {}
+    try {
+      const r = await agentExec(url, token, node, vmid, type, ['which', 'dnf']);
+      if (r.exitcode === 0) return 'dnf';
+    } catch {}
+    return 'apt'; // Default for Debian LXC
+  }
+
+  // For QEMU VMs
   try {
-    // Try reading /etc/os-release for Linux
     const r = await agentExec(url, token, node, vmid, type, ['cat', '/etc/os-release']);
     if (r.exitcode === 0 && r.stdout) {
-      const id = r.stdout.match(/^ID=(.+)$/m)?.[1]?.replace(/"/g, '').toLowerCase();
-      if (['ubuntu','debian'].includes(id))  return 'apt';
-      if (['rhel','centos','rocky','fedora','almalinux','ol'].includes(id)) return 'dnf';
-      if (id === 'alpine') return 'apk';
-      return 'linux';
+      return parseOsRelease(r.stdout);
     }
   } catch {}
-  // Try Windows — check for winver
+
+  // Try Windows
   try {
     const r = await agentExec(url, token, node, vmid, type, ['cmd.exe', '/c', 'ver']);
     if (r.exitcode === 0 && r.stdout.toLowerCase().includes('windows')) return 'windows';
   } catch {}
+
+  // Try which apt as last resort
+  try {
+    const r = await agentExec(url, token, node, vmid, type, ['which', 'apt-get']);
+    if (r.exitcode === 0) return 'apt';
+  } catch {}
+
   return 'unknown';
+}
+
+function parseOsRelease(content) {
+  const id = content.match(/^ID=(.+)$/m)?.[1]?.replace(/"/g, '').toLowerCase().trim();
+  if (!id) return 'unknown';
+  if (['ubuntu', 'debian', 'raspbian'].includes(id)) return 'apt';
+  if (['rhel', 'centos', 'rocky', 'fedora', 'almalinux', 'ol'].includes(id)) return 'dnf';
+  if (id === 'alpine') return 'apk';
+  // Check ID_LIKE as fallback
+  const idLike = content.match(/^ID_LIKE=(.+)$/m)?.[1]?.replace(/"/g, '').toLowerCase().trim();
+  if (idLike?.includes('debian') || idLike?.includes('ubuntu')) return 'apt';
+  if (idLike?.includes('rhel') || idLike?.includes('fedora')) return 'dnf';
+  return 'linux';
 }
 
 // ── Parse package lists ───────────────────────────────────────────────────────
