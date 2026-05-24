@@ -19,22 +19,27 @@ router.get('/', (req, res) => {
     ORDER BY security_count DESC, update_count DESC, vm_name
   `).all();
 
-  // Also include VMs that were checked but have 0 updates
+  // Get latest log entry per VM for VMs with 0 updates
   const logs = db.prepare(`
-    SELECT DISTINCT ON(node, vm_id) node, vm_id, vm_name, vm_type, os_type, status, error, checked_at
-    FROM (
-      SELECT node, vm_id, vm_name, vm_type, os_type, status, error, checked_at
+    SELECT l.* FROM patch_check_log l
+    INNER JOIN (
+      SELECT node, vm_id, MAX(checked_at) as max_checked
       FROM patch_check_log
-      ORDER BY checked_at DESC
-    )
-    GROUP BY node, vm_id
+      GROUP BY node, vm_id
+    ) latest ON l.node = latest.node AND l.vm_id = latest.vm_id AND l.checked_at = latest.max_checked
+    ORDER BY l.checked_at DESC
   `).all();
 
-  // Merge: add VMs from logs that have 0 updates
+  // Add VMs from logs that have 0 updates (not in patch_status)
   const vmIds = new Set(vms.map(v => `${v.node}-${v.vm_id}`));
   for (const log of logs) {
     if (!vmIds.has(`${log.node}-${log.vm_id}`)) {
-      vms.push({ ...log, update_count: 0, security_count: 0 });
+      vms.push({
+        node: log.node, vm_id: log.vm_id, vm_name: log.vm_name,
+        vm_type: log.vm_type, os_type: log.os_type,
+        status: log.status, error: log.error,
+        update_count: 0, security_count: 0, checked_at: log.checked_at,
+      });
     }
   }
 
