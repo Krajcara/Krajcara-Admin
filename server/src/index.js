@@ -392,7 +392,25 @@ app.get('/api/tv/public', async (req, res) => {
       }
     } catch {}
 
-    res.json({ monitors, lastSpeed, notifications, proxmox });
+    // Routers — ping each
+    const routerRows = db.prepare('SELECT id, name, ip_address FROM routers ORDER BY name').all();
+    const { execSync } = require('child_process');
+    const routers = routerRows.map(r => {
+      let alive = false;
+      try { execSync(`ping -c 1 -W 2 ${r.ip_address}`, { timeout: 4000 }); alive = true; } catch {}
+      return { id: r.id, name: r.name, ip: r.ip_address, online: alive };
+    });
+
+    // Local DNS — ping each
+    const dnsRows = db.prepare('SELECT id, role, type, ip, label FROM dns_local ORDER BY role').all();
+    const dnsServers = dnsRows.map(s => {
+      const host = s.ip.replace(/^https?:\/\//, '').split(':')[0].split('/')[0];
+      let online = false;
+      try { execSync(`ping -c 1 -W 2 ${host}`, { timeout: 4000 }); online = true; } catch {}
+      return { id: s.id, role: s.role, label: s.label || s.ip, ip: s.ip, online };
+    });
+
+    res.json({ monitors, lastSpeed, notifications, proxmox, routers, dnsServers });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
