@@ -129,6 +129,49 @@ function ProxmoxOverviewPanel({ proxmox }) {
   )
 }
 
+
+function NetworkPanel({ routers, dnsServers }) {
+  const allOnline = [...(routers||[]), ...(dnsServers||[])].every(r => r.online)
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Network</h2>
+        <span className={cn('text-xs font-medium', allOnline ? 'text-green-400' : 'text-red-400')}>
+          {allOnline ? '✓ All online' : '✗ Issues'}
+        </span>
+      </div>
+      <div className="space-y-1.5 flex-1">
+        {(routers||[]).map(r => (
+          <div key={r.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-gray-800/50">
+            <span className={cn('w-2 h-2 rounded-full flex-shrink-0', r.online ? 'bg-green-500' : 'bg-red-500 animate-pulse')} />
+            <span className="text-xs font-medium text-white flex-1 truncate">{r.name}</span>
+            <span className="text-xs text-gray-600 font-mono hidden xl:block">{r.ip}</span>
+            <span className={cn('text-xs font-bold', r.online ? 'text-green-400' : 'text-red-400')}>
+              {r.online ? 'UP' : 'DOWN'}
+            </span>
+          </div>
+        ))}
+        {(dnsServers||[]).length > 0 && (routers||[]).length > 0 && (
+          <div className="border-t border-gray-800 my-1" />
+        )}
+        {(dnsServers||[]).map(s => (
+          <div key={s.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-gray-800/50">
+            <span className={cn('w-2 h-2 rounded-full flex-shrink-0', s.online ? 'bg-green-500' : 'bg-red-500 animate-pulse')} />
+            <span className="text-xs font-medium text-white flex-1 truncate">{s.label}</span>
+            <span className={cn('text-xs px-1 py-0.5 rounded font-medium',
+              s.role === 'primary' ? 'bg-brand/20 text-brand-light' : 'bg-gray-700 text-gray-400')}>
+              {s.role}
+            </span>
+            <span className={cn('text-xs font-bold', s.online ? 'text-green-400' : 'text-red-400')}>
+              {s.online ? 'UP' : 'DOWN'}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function NetSpeedPanel({ lastSpeed }) {
   return (
     <div className="flex flex-col h-full">
@@ -207,6 +250,9 @@ function OverviewTab({ data }) {
       <div className="flex flex-col gap-4">
         <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 flex-1 overflow-hidden flex flex-col">
           <ProxmoxOverviewPanel proxmox={data?.proxmox} />
+        </div>
+        <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 flex-shrink-0">
+          <NetworkPanel routers={data?.routers || []} dnsServers={data?.dnsServers || []} />
         </div>
         <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 flex-shrink-0">
           <NetSpeedPanel lastSpeed={data?.lastSpeed} />
@@ -329,7 +375,7 @@ function ProxmoxTab({ proxmox }) {
               <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{node.node}</span>
               <span className="text-xs text-gray-600">{node.vm_running}/{all.length} running</span>
             </div>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-6 gap-2">
               {all.map(vm => <VMCard key={`${vm.type}-${vm.vmid}`} vm={vm} />)}
             </div>
           </div>
