@@ -56,27 +56,27 @@ async function agentExec(url, token, node, vmid, type, command) {
 
 // ── OS detection ──────────────────────────────────────────────────────────────
 async function detectOS(url, token, node, vmid, type) {
-  // For LXC, try direct file read via Proxmox API first
-  if (type === 'lxc') {
-    try {
-      const r = await agentExec(url, token, node, vmid, type, ['cat', '/etc/os-release']);
-      if (r.exitcode === 0 && r.stdout) {
-        return parseOsRelease(r.stdout);
-      }
-    } catch {}
-    // LXC fallback: check for apt/dnf directly
-    try {
-      const r = await agentExec(url, token, node, vmid, type, ['which', 'apt-get']);
-      if (r.exitcode === 0) return 'apt';
-    } catch {}
-    try {
-      const r = await agentExec(url, token, node, vmid, type, ['which', 'dnf']);
-      if (r.exitcode === 0) return 'dnf';
-    } catch {}
-    return 'apt'; // Default for Debian LXC
-  }
+  // First check Proxmox VM config for ostype — fastest and most reliable
+  try {
+    const cfg = await pveGet(url, `/nodes/${node}/${type}/${vmid}/config`, token);
+    const ostype = (cfg.ostype || '').toLowerCase();
+    // Windows ostype values: win11, win10, win2k22, win2k19, win2k16, win2k12r2, win2k8r2, win7, winxp, win2k
+    if (ostype.startsWith('win')) return 'windows';
+    // Linux ostype values: l26, l24
+    if (ostype === 'l26' || ostype === 'l24') {
+      // Linux but need to detect distro — try /etc/os-release
+    }
+    // LXC ostype is the distro name directly
+    if (type === 'lxc') {
+      if (ostype.includes('ubuntu'))  return 'apt';
+      if (ostype.includes('debian'))  return 'apt';
+      if (ostype.includes('alpine'))  return 'apk';
+      if (ostype.includes('centos') || ostype.includes('fedora') || ostype.includes('rocky')) return 'dnf';
+      if (ostype) return 'apt'; // Default for unknown LXC
+    }
+  } catch {}
 
-  // For QEMU VMs
+  // For QEMU Linux VMs — try /etc/os-release via guest agent
   try {
     const r = await agentExec(url, token, node, vmid, type, ['cat', '/etc/os-release']);
     if (r.exitcode === 0 && r.stdout) {
@@ -84,7 +84,7 @@ async function detectOS(url, token, node, vmid, type) {
     }
   } catch {}
 
-  // Try Windows
+  // Try Windows via cmd
   try {
     const r = await agentExec(url, token, node, vmid, type, ['cmd.exe', '/c', 'ver']);
     if (r.exitcode === 0 && r.stdout.toLowerCase().includes('windows')) return 'windows';
@@ -215,17 +215,42 @@ async function runPatchCheck(targetVmId = null) {
     nodes = await pveGet(cfg.url, '/nodes', cfg.token);
   } catch (e) { console.error('[Patches] Cannot reach Proxmox:', e.message); return; }
 
+  // Build set of all current VM IDs from Proxmox and cache VM lists
+  const currentVmIds = new Set();
+  const nodeVmCache  = {};
   for (const node of nodes) {
     if (node.status !== 'online') continue;
-
     const [vms, lxcs] = await Promise.all([
       pveGet(cfg.url, `/nodes/${node.node}/qemu`, cfg.token).catch(() => []),
       pveGet(cfg.url, `/nodes/${node.node}/lxc`,  cfg.token).catch(() => []),
     ]);
+    nodeVmCache[node.node] = { vms: vms || [], lxcs: lxcs || [] };
+    for (const v of [...(vms||[]), ...(lxcs||[])]) {
+      currentVmIds.add(`${node.node}-${v.vmid}`);
+    }
+  }
+
+  // Remove patch data for VMs that no longer exist
+  if (!targetVmId) {
+    const existingVms = db.prepare('SELECT DISTINCT node, vm_id FROM patch_status').all();
+    for (const row of existingVms) {
+      if (!currentVmIds.has(`${row.node}-${row.vm_id}`)) {
+        console.log(`[Patches] Removing deleted VM ${row.node}/${row.vm_id}`);
+        db.prepare('DELETE FROM patch_status WHERE node=? AND vm_id=?').run(row.node, row.vm_id);
+        db.prepare('DELETE FROM patch_check_log WHERE node=? AND vm_id=?').run(row.node, row.vm_id);
+      }
+    }
+  }
+
+  for (const node of nodes) {
+    if (node.status !== 'online') continue;
+
+    const cached = nodeVmCache[node.node];
+    if (!cached) continue;
 
     const allVMs = [
-      ...(vms  || []).map(v => ({ ...v, type: 'qemu' })),
-      ...(lxcs || []).map(v => ({ ...v, type: 'lxc'  })),
+      ...(cached.vms  || []).map(v => ({ ...v, type: 'qemu' })),
+      ...(cached.lxcs || []).map(v => ({ ...v, type: 'lxc'  })),
     ].filter(v => v.status === 'running');
 
     for (const vm of allVMs) {
