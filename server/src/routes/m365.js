@@ -317,4 +317,73 @@ router.get('/storage/mailbox', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Mail flow per domain ──────────────────────────────────────────────────────
+router.get('/mail-flow', async (req, res) => {
+  const period = ['D7','D30','D90','D180'].includes(req.query.period) ? req.query.period : 'D30';
+  try {
+    const token  = await getM365Token();
+    const axios  = require('axios');
+    const headers = { Authorization: `Bearer ${token}` };
+
+    // getEmailActivityUserDetail — one row per user with totals for period
+    const r = await axios.get(
+      `https://graph.microsoft.com/v1.0/reports/getEmailActivityUserDetail(period='${period}')`,
+      { headers, timeout: 30000, maxRedirects: 5 }
+    );
+
+    const raw = typeof r.data === 'string' ? r.data : '';
+    if (!raw) return res.json({ period, domains: [], totals: { send: 0, receive: 0, read: 0 } });
+
+    // Parse CSV
+    const parseCSV = (text) => {
+      const lines = text.replace(/^\uFEFF/, '').trim().split('\n').filter(Boolean);
+      if (lines.length < 2) return [];
+      const hdrs = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+      return lines.slice(1).map(line => {
+        const vals = []; let cur = '', inQ = false;
+        for (const ch of line) {
+          if (ch === '"') inQ = !inQ;
+          else if (ch === ',' && !inQ) { vals.push(cur.trim()); cur = ''; }
+          else cur += ch;
+        }
+        vals.push(cur.trim());
+        const obj = {};
+        hdrs.forEach((h, i) => obj[h] = (vals[i] || '').replace(/^"|"$/g, ''));
+        return obj;
+      });
+    };
+
+    const rows = parseCSV(raw);
+
+    // Group by domain
+    const domainMap = {};
+    for (const row of rows) {
+      const email = row['User Principal Name'] || '';
+      if (!email || email.includes('#EXT#')) continue; // skip external/deleted
+      const domain = email.split('@')[1]?.toLowerCase();
+      if (!domain) continue;
+
+      if (!domainMap[domain]) domainMap[domain] = { domain, send: 0, receive: 0, read: 0, users: 0 };
+
+      domainMap[domain].send    += parseInt(row['Send Count']    || row['Send']    || 0) || 0;
+      domainMap[domain].receive += parseInt(row['Receive Count'] || row['Receive'] || 0) || 0;
+      domainMap[domain].read    += parseInt(row['Read Count']    || row['Read']    || 0) || 0;
+      domainMap[domain].users   += 1;
+    }
+
+    const domains = Object.values(domainMap)
+      .sort((a, b) => (b.send + b.receive) - (a.send + a.receive));
+
+    const totals = domains.reduce((acc, d) => ({
+      send:    acc.send    + d.send,
+      receive: acc.receive + d.receive,
+      read:    acc.read    + d.read,
+    }), { send: 0, receive: 0, read: 0 });
+
+    res.json({ period, domains, totals });
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data?.error?.message || err.message });
+  }
+});
+
 module.exports = router;
