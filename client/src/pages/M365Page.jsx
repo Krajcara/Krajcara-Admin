@@ -147,137 +147,227 @@ function StorageTab() {
 
 // ── Mail Flow Tab ─────────────────────────────────────────────────────────────
 function MailFlowTab() {
-  const [data,    setData]    = useState(null)
+  const [view,    setView]    = useState('monthly')
+  const [monthly, setMonthly] = useState(null)
+  const [domain,  setDomain]  = useState(null)
+  const [period,  setPeriod]  = useState('D30')
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState('')
-  const [period,  setPeriod]  = useState('D30')
 
-  const load = useCallback((p = period) => {
+  const loadMonthly = useCallback(() => {
+    setLoading(true); setError('')
+    api.get('/m365/mail-flow-monthly')
+      .then(r => setMonthly(r.data))
+      .catch(err => setError(err.response?.data?.error || 'Failed to load data'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const loadDomain = useCallback((p = period) => {
     setLoading(true); setError('')
     api.get(`/m365/mail-flow?period=${p}`)
-      .then(r => setData(r.data))
-      .catch(err => setError(err.response?.data?.error || 'Failed to load mail flow data'))
+      .then(r => setDomain(r.data))
+      .catch(err => setError(err.response?.data?.error || 'Failed to load data'))
       .finally(() => setLoading(false))
   }, [period])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    if (view === 'monthly') loadMonthly()
+    else loadDomain()
+  }, [view, loadMonthly, loadDomain])
 
-  const changePeriod = (p) => { setPeriod(p); load(p) }
   const fmtNum = (n) => n?.toLocaleString() || '0'
-
-  // Chart data — domains as categories
-  const chartData = data?.domains?.map(d => ({
-    domain:  d.domain,
-    Sent:    d.send,
-    Received:d.receive,
-    Read:    d.read,
-  })) || []
+  const fmtTrend = (n) => n == null ? null : (n > 0 ? `+${n.toLocaleString()}` : n.toLocaleString())
 
   return (
     <div className="space-y-4">
-      {/* Controls */}
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-gray-400">Period:</span>
-        {['D7','D30','D90','D180'].map(p => (
-          <button key={p} onClick={() => changePeriod(p)}
-            className={cn('px-2.5 py-1 text-xs font-medium rounded transition-colors',
-              period === p ? 'bg-brand text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700')}>
-            {p.replace('D', '')}d
-          </button>
-        ))}
-        <button onClick={() => load()} className="p-1.5 text-gray-400 hover:text-brand rounded transition-colors">
+      {/* View switcher */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex gap-1">
+          {[
+            { key: 'monthly', label: 'Monthly trend' },
+            { key: 'domain',  label: 'By domain' },
+          ].map(v => (
+            <button key={v.key} onClick={() => setView(v.key)}
+              className={cn('px-3 py-1.5 text-sm font-medium rounded-lg transition-colors',
+                view === v.key ? 'bg-brand text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700')}>
+              {v.label}
+            </button>
+          ))}
+        </div>
+        {view === 'domain' && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-400">Period:</span>
+            {['D7','D30','D90','D180'].map(p => (
+              <button key={p} onClick={() => { setPeriod(p); loadDomain(p) }}
+                className={cn('px-2.5 py-1 text-xs font-medium rounded transition-colors',
+                  period === p ? 'bg-brand text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700')}>
+                {p.replace('D', '')}d
+              </button>
+            ))}
+          </div>
+        )}
+        <button onClick={() => view === 'monthly' ? loadMonthly() : loadDomain()}
+          className="p-1.5 text-gray-400 hover:text-brand rounded transition-colors">
           <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
         </button>
-        <span className="text-xs text-gray-400 ml-2">Last {period.replace('D','')} days</span>
       </div>
 
       {error && <AlertBox type="error">{error}</AlertBox>}
+      {loading && <div className="flex justify-center py-12"><Spinner className="w-6 h-6" /></div>}
 
-      {loading
-        ? <div className="flex justify-center py-12"><Spinner className="w-6 h-6" /></div>
-        : data && (
-          <div className="space-y-4">
-            {/* Totals */}
-            <div className="grid grid-cols-3 gap-4">
-              {[
-                { label: 'Total sent',     value: fmtNum(data.totals?.send),    color: 'text-blue-600 dark:text-blue-400',     bg: 'bg-blue-50 dark:bg-blue-900/20' },
-                { label: 'Total received', value: fmtNum(data.totals?.receive), color: 'text-green-600 dark:text-green-400',   bg: 'bg-green-50 dark:bg-green-900/20' },
-                { label: 'Total read',     value: fmtNum(data.totals?.read),    color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-900/20' },
-              ].map(s => (
-                <div key={s.label} className={cn('rounded-xl p-5 text-center', s.bg)}>
-                  <p className={cn('text-3xl font-bold', s.color)}>{s.value}</p>
-                  <p className="text-sm text-gray-500 mt-1">{s.label}</p>
-                </div>
-              ))}
+      {/* MONTHLY VIEW */}
+      {!loading && view === 'monthly' && monthly && (
+        <div className="space-y-4">
+          {/* Trend badge */}
+          {monthly.trend != null && (
+            <div className="flex items-center gap-2">
+              <span className={cn('text-sm font-semibold',
+                monthly.trend > 0 ? 'text-green-600 dark:text-green-400' : monthly.trend < 0 ? 'text-red-500' : 'text-gray-400')}>
+                {fmtTrend(monthly.trend)} sent vs prev month
+              </span>
             </div>
+          )}
 
-            {data.domains?.length > 0 ? (
-              <>
-                {/* Bar chart per domain */}
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle>Mail activity by domain</CardTitle>
-                      <div className="flex items-center gap-4 text-xs">
-                        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-blue-500 inline-block" />Sent</span>
-                        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-green-500 inline-block" />Received</span>
-                        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-purple-500 inline-block" />Read</span>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-0 pb-4">
-                    <ResponsiveContainer width="100%" height={Math.max(200, chartData.length * 60)}>
-                      <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 20, bottom: 0, left: 10 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.06} horizontal={false} />
-                        <XAxis type="number" tick={{ fontSize: 10 }} tickLine={false} axisLine={false}
-                          tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
-                        <YAxis type="category" dataKey="domain" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={150} />
-                        <Tooltip
-                          contentStyle={{ fontSize: 11, borderRadius: 8, border: 'none', background: '#111827', color: '#f9fafb' }}
-                          formatter={(v) => [v.toLocaleString()]}
-                        />
-                        <Bar dataKey="Sent"     fill="#3b82f6" radius={[0,2,2,0]} maxBarSize={18} />
-                        <Bar dataKey="Received" fill="#22c55e" radius={[0,2,2,0]} maxBarSize={18} />
-                        <Bar dataKey="Read"     fill="#a855f7" radius={[0,2,2,0]} maxBarSize={18} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
+          {/* Monthly bar chart */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Email Activity — monthly · last 6 months</CardTitle>
+                <div className="flex items-center gap-4 text-xs">
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-blue-500 inline-block" />Sent</span>
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-green-500 inline-block" />Received</span>
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-purple-500 inline-block" />Read</span>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0 pb-4">
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={monthly.months} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.06} vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                  <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false}
+                    tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
+                  <Tooltip
+                    contentStyle={{ fontSize: 11, borderRadius: 8, border: 'none', background: '#111827', color: '#f9fafb' }}
+                    formatter={(v, name) => [v.toLocaleString(), name]}
+                  />
+                  <Bar dataKey="send"    name="Sent"     fill="#3b82f6" radius={[3,3,0,0]} maxBarSize={28} />
+                  <Bar dataKey="receive" name="Received" fill="#22c55e" radius={[3,3,0,0]} maxBarSize={28} />
+                  <Bar dataKey="read"    name="Read"     fill="#a855f7" radius={[3,3,0,0]} maxBarSize={28} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
 
-                {/* Domain detail table */}
-                <Card>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-                          <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase">Domain</th>
-                          <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase">Users</th>
-                          <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase text-blue-500">Sent</th>
-                          <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase text-green-500">Received</th>
-                          <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase text-purple-500">Read</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                        {data.domains.map(d => (
-                          <tr key={d.domain} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                            <td className="px-4 py-2.5 font-mono text-sm font-medium text-gray-900 dark:text-white">@{d.domain}</td>
-                            <td className="px-4 py-2.5 text-gray-500 text-sm">{d.users}</td>
-                            <td className="px-4 py-2.5 text-right font-semibold text-blue-600 dark:text-blue-400">{fmtNum(d.send)}</td>
-                            <td className="px-4 py-2.5 text-right font-semibold text-green-600 dark:text-green-400">{fmtNum(d.receive)}</td>
-                            <td className="px-4 py-2.5 text-right font-semibold text-purple-600 dark:text-purple-400">{fmtNum(d.read)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </Card>
-              </>
-            ) : (
-              <AlertBox type="info">No mail activity data available. Data may take up to 48 hours to appear in Microsoft reports.</AlertBox>
-            )}
+          {/* Monthly table */}
+          <Card>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase">Month</th>
+                    <th className="px-4 py-2.5 text-right text-xs font-medium text-blue-500 uppercase">↑ Sent</th>
+                    <th className="px-4 py-2.5 text-right text-xs font-medium text-green-500 uppercase">↓ Received</th>
+                    <th className="px-4 py-2.5 text-right text-xs font-medium text-purple-500 uppercase">● Read</th>
+                    <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {monthly.months.map((m, i) => (
+                    <tr key={i} className={cn('hover:bg-gray-50 dark:hover:bg-gray-800/50',
+                      i === monthly.months.length - 1 && 'font-semibold bg-gray-50/50 dark:bg-gray-800/30')}>
+                      <td className="px-4 py-2.5 text-gray-900 dark:text-white">{m.label}</td>
+                      <td className="px-4 py-2.5 text-right text-blue-600 dark:text-blue-400">{fmtNum(m.send)}</td>
+                      <td className="px-4 py-2.5 text-right text-green-600 dark:text-green-400">{fmtNum(m.receive)}</td>
+                      <td className="px-4 py-2.5 text-right text-purple-600 dark:text-purple-400">{fmtNum(m.read)}</td>
+                      <td className="px-4 py-2.5 text-right text-gray-500">{fmtNum(m.send + m.receive)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* DOMAIN VIEW */}
+      {!loading && view === 'domain' && domain && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-3 gap-4">
+            {[
+              { label: 'Total sent',     value: fmtNum(domain.totals?.send),    color: 'text-blue-600 dark:text-blue-400',     bg: 'bg-blue-50 dark:bg-blue-900/20' },
+              { label: 'Total received', value: fmtNum(domain.totals?.receive), color: 'text-green-600 dark:text-green-400',   bg: 'bg-green-50 dark:bg-green-900/20' },
+              { label: 'Total read',     value: fmtNum(domain.totals?.read),    color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-900/20' },
+            ].map(s => (
+              <div key={s.label} className={cn('rounded-xl p-5 text-center', s.bg)}>
+                <p className={cn('text-3xl font-bold', s.color)}>{s.value}</p>
+                <p className="text-sm text-gray-500 mt-1">{s.label}</p>
+              </div>
+            ))}
           </div>
-        )
-      }
+
+          {domain.domains?.length > 0 ? (
+            <>
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle>Mail activity by domain</CardTitle>
+                    <div className="flex items-center gap-4 text-xs">
+                      <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-blue-500 inline-block" />Sent</span>
+                      <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-green-500 inline-block" />Received</span>
+                      <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-purple-500 inline-block" />Read</span>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-0 pb-4">
+                  <ResponsiveContainer width="100%" height={Math.max(180, domain.domains.length * 55)}>
+                    <BarChart data={domain.domains.map(d => ({ domain: d.domain, Sent: d.send, Received: d.receive, Read: d.read }))}
+                      layout="vertical" margin={{ top: 4, right: 20, bottom: 0, left: 10 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.06} horizontal={false} />
+                      <XAxis type="number" tick={{ fontSize: 10 }} tickLine={false} axisLine={false}
+                        tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
+                      <YAxis type="category" dataKey="domain" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={160} />
+                      <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8, border: 'none', background: '#111827', color: '#f9fafb' }}
+                        formatter={(v) => [v.toLocaleString()]} />
+                      <Bar dataKey="Sent"     fill="#3b82f6" radius={[0,2,2,0]} maxBarSize={16} />
+                      <Bar dataKey="Received" fill="#22c55e" radius={[0,2,2,0]} maxBarSize={16} />
+                      <Bar dataKey="Read"     fill="#a855f7" radius={[0,2,2,0]} maxBarSize={16} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+              <Card>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
+                        <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase">Domain</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase">Users</th>
+                        <th className="px-4 py-2.5 text-right text-xs font-medium text-blue-500 uppercase">Sent</th>
+                        <th className="px-4 py-2.5 text-right text-xs font-medium text-green-500 uppercase">Received</th>
+                        <th className="px-4 py-2.5 text-right text-xs font-medium text-purple-500 uppercase">Read</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {domain.domains.map(d => (
+                        <tr key={d.domain} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                          <td className="px-4 py-2.5 font-mono font-medium text-gray-900 dark:text-white">@{d.domain}</td>
+                          <td className="px-4 py-2.5 text-gray-500">{d.users}</td>
+                          <td className="px-4 py-2.5 text-right font-semibold text-blue-600 dark:text-blue-400">{fmtNum(d.send)}</td>
+                          <td className="px-4 py-2.5 text-right font-semibold text-green-600 dark:text-green-400">{fmtNum(d.receive)}</td>
+                          <td className="px-4 py-2.5 text-right font-semibold text-purple-600 dark:text-purple-400">{fmtNum(d.read)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </>
+          ) : (
+            <AlertBox type="info">No mail activity data available. Data may take up to 48 hours to appear in Microsoft reports.</AlertBox>
+          )}
+        </div>
+      )}
     </div>
   )
 }
