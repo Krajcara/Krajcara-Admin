@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts'
 import {
   Users, Shield, ShieldCheck, ShieldOff, RefreshCw,
   Settings, CheckCircle, AlertCircle, XCircle, Search,
-  ChevronDown, ChevronUp, UserX, Mail, Crown, Key, HardDrive
+  ChevronDown, ChevronUp, UserX, Mail, Crown, Key, HardDrive, BarChart2
 } from 'lucide-react'
 import api from '../lib/api'
 import { useAuthStore } from '../store/authStore'
@@ -137,6 +138,144 @@ function StorageTab() {
             {section === 'onedrive' && <StorageTable data={onedrive} emptyMsg="No OneDrive data available" />}
             {section === 'mailbox'  && <StorageTable data={mailbox}  emptyMsg="No mailbox data available" />}
           </Card>
+        )
+      }
+    </div>
+  )
+}
+
+
+// ── Mail Flow Tab ─────────────────────────────────────────────────────────────
+function MailFlowTab() {
+  const [data,    setData]    = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState('')
+  const [period,  setPeriod]  = useState('D30')
+
+  const load = useCallback((p = period) => {
+    setLoading(true); setError('')
+    api.get(`/m365/mail-flow?period=${p}`)
+      .then(r => setData(r.data))
+      .catch(err => setError(err.response?.data?.error || 'Failed to load mail flow data'))
+      .finally(() => setLoading(false))
+  }, [period])
+
+  useEffect(() => { load() }, [load])
+
+  const changePeriod = (p) => { setPeriod(p); load(p) }
+  const fmtNum = (n) => n?.toLocaleString() || '0'
+
+  // Chart data — domains as categories
+  const chartData = data?.domains?.map(d => ({
+    domain:  d.domain,
+    Sent:    d.send,
+    Received:d.receive,
+    Read:    d.read,
+  })) || []
+
+  return (
+    <div className="space-y-4">
+      {/* Controls */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-gray-400">Period:</span>
+        {['D7','D30','D90','D180'].map(p => (
+          <button key={p} onClick={() => changePeriod(p)}
+            className={cn('px-2.5 py-1 text-xs font-medium rounded transition-colors',
+              period === p ? 'bg-brand text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700')}>
+            {p.replace('D', '')}d
+          </button>
+        ))}
+        <button onClick={() => load()} className="p-1.5 text-gray-400 hover:text-brand rounded transition-colors">
+          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+        </button>
+        <span className="text-xs text-gray-400 ml-2">Last {period.replace('D','')} days</span>
+      </div>
+
+      {error && <AlertBox type="error">{error}</AlertBox>}
+
+      {loading
+        ? <div className="flex justify-center py-12"><Spinner className="w-6 h-6" /></div>
+        : data && (
+          <div className="space-y-4">
+            {/* Totals */}
+            <div className="grid grid-cols-3 gap-4">
+              {[
+                { label: 'Total sent',     value: fmtNum(data.totals?.send),    color: 'text-blue-600 dark:text-blue-400',     bg: 'bg-blue-50 dark:bg-blue-900/20' },
+                { label: 'Total received', value: fmtNum(data.totals?.receive), color: 'text-green-600 dark:text-green-400',   bg: 'bg-green-50 dark:bg-green-900/20' },
+                { label: 'Total read',     value: fmtNum(data.totals?.read),    color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-900/20' },
+              ].map(s => (
+                <div key={s.label} className={cn('rounded-xl p-5 text-center', s.bg)}>
+                  <p className={cn('text-3xl font-bold', s.color)}>{s.value}</p>
+                  <p className="text-sm text-gray-500 mt-1">{s.label}</p>
+                </div>
+              ))}
+            </div>
+
+            {data.domains?.length > 0 ? (
+              <>
+                {/* Bar chart per domain */}
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle>Mail activity by domain</CardTitle>
+                      <div className="flex items-center gap-4 text-xs">
+                        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-blue-500 inline-block" />Sent</span>
+                        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-green-500 inline-block" />Received</span>
+                        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-purple-500 inline-block" />Read</span>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-0 pb-4">
+                    <ResponsiveContainer width="100%" height={Math.max(200, chartData.length * 60)}>
+                      <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 20, bottom: 0, left: 10 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.06} horizontal={false} />
+                        <XAxis type="number" tick={{ fontSize: 10 }} tickLine={false} axisLine={false}
+                          tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
+                        <YAxis type="category" dataKey="domain" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={150} />
+                        <Tooltip
+                          contentStyle={{ fontSize: 11, borderRadius: 8, border: 'none', background: '#111827', color: '#f9fafb' }}
+                          formatter={(v) => [v.toLocaleString()]}
+                        />
+                        <Bar dataKey="Sent"     fill="#3b82f6" radius={[0,2,2,0]} maxBarSize={18} />
+                        <Bar dataKey="Received" fill="#22c55e" radius={[0,2,2,0]} maxBarSize={18} />
+                        <Bar dataKey="Read"     fill="#a855f7" radius={[0,2,2,0]} maxBarSize={18} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+
+                {/* Domain detail table */}
+                <Card>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
+                          <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase">Domain</th>
+                          <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase">Users</th>
+                          <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase text-blue-500">Sent</th>
+                          <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase text-green-500">Received</th>
+                          <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase text-purple-500">Read</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                        {data.domains.map(d => (
+                          <tr key={d.domain} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                            <td className="px-4 py-2.5 font-mono text-sm font-medium text-gray-900 dark:text-white">@{d.domain}</td>
+                            <td className="px-4 py-2.5 text-gray-500 text-sm">{d.users}</td>
+                            <td className="px-4 py-2.5 text-right font-semibold text-blue-600 dark:text-blue-400">{fmtNum(d.send)}</td>
+                            <td className="px-4 py-2.5 text-right font-semibold text-green-600 dark:text-green-400">{fmtNum(d.receive)}</td>
+                            <td className="px-4 py-2.5 text-right font-semibold text-purple-600 dark:text-purple-400">{fmtNum(d.read)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </>
+            ) : (
+              <AlertBox type="info">No mail activity data available. Data may take up to 48 hours to appear in Microsoft reports.</AlertBox>
+            )}
+          </div>
         )
       }
     </div>
@@ -383,7 +522,8 @@ export default function M365Page() {
                 { key: 'overview', label: 'Overview' },
                 { key: 'users',    label: `Users${users ? ` (${users.users.length})` : ''}` },
                 { key: 'licences', label: 'Licences' },
-                { key: 'storage',  label: 'Storage', icon: HardDrive },
+                { key: 'storage',  label: 'Storage',    icon: HardDrive },
+                { key: 'mailflow', label: 'Mail Flow',   icon: Mail },
                 { key: 'health',   label: 'Service Health', badge: issueCount },
               ].map(t => (
                 <button key={t.key} onClick={() => setActiveTab(t.key)}
@@ -522,6 +662,9 @@ export default function M365Page() {
 
             {/* STORAGE */}
             {activeTab === 'storage' && <StorageTab />}
+
+            {/* MAIL FLOW */}
+            {activeTab === 'mailflow' && <MailFlowTab />}
 
             {/* HEALTH */}
             {activeTab === 'health' && (
