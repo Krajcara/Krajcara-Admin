@@ -4,7 +4,7 @@ import NotificationBell from './NotificationBell'
 import {
   LayoutDashboard, Shield, LogOut, Sun, Moon, Menu, User,
   Users, Settings, BookOpen, KeyRound, RefreshCw, Activity, Network, Globe,
-  Server, Scan, CalendarClock, Wifi, Cloud, HardDrive, ChevronDown, MapPin, Layers
+  Server, Scan, CalendarClock, Wifi, Cloud, HardDrive, ChevronDown, MapPin, Layers, Monitor
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useThemeStore } from '../../store/themeStore'
@@ -237,6 +237,11 @@ export default function Layout() {
             className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
             title="Status page">
             <Shield className="w-4 h-4" />
+          </a>
+          <a href="/tv" target="_blank" rel="noopener noreferrer"
+            className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            title="TV Monitor">
+            <Monitor className="w-4 h-4" />
           </a>
           <button onClick={toggle} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title={dark ? 'Light mode' : 'Dark mode'}>
             {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
