@@ -107,6 +107,7 @@ async function runNotificationChecks() {
     await checkRouters();
     await checkDnsServers();
     await checkProxmoxVMs();
+    checkLicenceExpiry();
   } catch (e) {
     console.error('[Notifications] Check error:', e.message);
   }
@@ -296,4 +297,65 @@ async function checkProxmoxVMs() {
   }
 }
 
-module.exports = { createNotification, runNotificationChecks, checkRouters, checkDnsServers, checkProxmoxVMs };
+
+// ── Licence expiry check ──────────────────────────────────────────────────────
+function checkLicenceExpiry() {
+  const licences = db.prepare(
+    "SELECT * FROM licences WHERE hidden=0 AND expiry_date IS NOT NULL AND expiry_date != ''"
+  ).all();
+
+  const now = new Date();
+
+  for (const lic of licences) {
+    const expiry = new Date(lic.expiry_date);
+    const days   = Math.ceil((expiry - now) / 86400000);
+    const name   = `${lic.vendor} — ${lic.licence_type}`;
+
+    // Thresholds per billing cycle
+    const thresholds = lic.billing_cycle === 'monthly'
+      ? [7, 3]
+      : [60, 30, 7]; // annual / perpetual
+
+    for (const threshold of thresholds) {
+      if (days <= threshold && days > 0) {
+        // Check if we already notified for this threshold recently
+        const recentDays = threshold <= 7 ? 1 : threshold <= 30 ? 5 : 14;
+        const exists = db.prepare(`
+          SELECT id FROM notifications
+          WHERE module='licences' AND entity_id=? AND type='warning'
+          AND message LIKE ?
+          AND created_at >= datetime('now', '-${recentDays} days')
+        `).get(String(lic.id), `%${threshold} day%`);
+        if (!exists) {
+          createNotification({
+            type: 'warning', module: 'licences',
+            title: `Licence expiring: ${name}`,
+            message: `Expires in ${days} day${days !== 1 ? 's' : ''} (${lic.expiry_date}). Billing: ${lic.billing_cycle}.`,
+            entityId: lic.id, entityName: name,
+          });
+          break; // Only one notification per cycle check
+        }
+        break;
+      }
+    }
+
+    // Expired
+    if (days <= 0) {
+      const exists = db.prepare(`
+        SELECT id FROM notifications
+        WHERE module='licences' AND entity_id=? AND type='error'
+        AND created_at >= datetime('now', '-3 days')
+      `).get(String(lic.id));
+      if (!exists) {
+        createNotification({
+          type: 'error', module: 'licences',
+          title: `Licence expired: ${name}`,
+          message: `This licence expired ${Math.abs(days)} day${Math.abs(days) !== 1 ? 's' : ''} ago (${lic.expiry_date}).`,
+          entityId: lic.id, entityName: name,
+        });
+      }
+    }
+  }
+}
+
+module.exports = { createNotification, runNotificationChecks, checkRouters, checkDnsServers, checkProxmoxVMs, checkLicenceExpiry };
