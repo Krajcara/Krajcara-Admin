@@ -311,26 +311,66 @@ app.get('/api/tv/public', async (req, res) => {
             axios.get(`${url}/api2/json/nodes/${n.node}/qemu`, { headers, httpsAgent, timeout: 6000 }).catch(() => ({ data: { data: [] } })),
             axios.get(`${url}/api2/json/nodes/${n.node}/lxc`,  { headers, httpsAgent, timeout: 6000 }).catch(() => ({ data: { data: [] } })),
           ]);
-          const vms = (vmsRes.data.data || []).map(v => ({
-            vmid: v.vmid, name: v.name, type: 'qemu', status: v.status,
-            uptime: v.uptime || 0,
-            cpu_usage:  v.status === 'running' && v.cpu != null ? Math.round(v.cpu * 100) : 0,
-            mem_usage:  v.status === 'running' && v.mem && v.maxmem ? Math.round((v.mem / v.maxmem) * 100) : 0,
-            disk_usage: v.disk && v.maxdisk ? Math.round((v.disk / v.maxdisk) * 100) : 0,
-            mem_used_gb: v.mem    ? (v.mem    / 1073741824).toFixed(1) : '0',
-            mem_max_gb:  v.maxmem ? (v.maxmem / 1073741824).toFixed(1) : '0',
-            disk_max_gb: v.maxdisk? (v.maxdisk/ 1073741824).toFixed(0) : '0',
-          }));
-          const lxc = (lxcRes.data.data || []).map(v => ({
-            vmid: v.vmid, name: v.name || v.hostname, type: 'lxc', status: v.status,
-            uptime: v.uptime || 0,
-            cpu_usage:  v.status === 'running' && v.cpu != null ? Math.round(v.cpu * 100) : 0,
-            mem_usage:  v.status === 'running' && v.mem && v.maxmem ? Math.round((v.mem / v.maxmem) * 100) : 0,
-            disk_usage: v.disk && v.maxdisk ? Math.round((v.disk / v.maxdisk) * 100) : 0,
-            mem_used_gb: v.mem    ? (v.mem    / 1073741824).toFixed(1) : '0',
-            mem_max_gb:  v.maxmem ? (v.maxmem / 1073741824).toFixed(1) : '0',
-            disk_max_gb: v.maxdisk? (v.maxdisk/ 1073741824).toFixed(0) : '0',
-          }));
+          // Enrich VMs with IP and OS
+          const enrichVm = async (v, type) => {
+            let ip = null, os = null;
+            if (v.status === 'running') {
+              try {
+                if (type === 'qemu') {
+                  const ifaces = await axios.get(`${url}/api2/json/nodes/${n.node}/qemu/${v.vmid}/agent/network-get-interfaces`, { headers, httpsAgent, timeout: 5000 });
+                  for (const iface of (ifaces.data.data?.result || [])) {
+                    if (iface.name === 'lo') continue;
+                    const ipv4 = (iface['ip-addresses'] || []).find(a => a['ip-address-type'] === 'ipv4');
+                    if (ipv4) { ip = ipv4['ip-address']; break; }
+                  }
+                }
+              } catch {}
+              try {
+                const cfg = await axios.get(`${url}/api2/json/nodes/${n.node}/${type}/${v.vmid}/config`, { headers, httpsAgent, timeout: 5000 });
+                const ostype = cfg.data.data?.ostype || '';
+                const desc   = (cfg.data.data?.description || '').toLowerCase();
+                if (desc.includes('ubuntu'))  os = 'Ubuntu';
+                else if (desc.includes('debian'))  os = 'Debian';
+                else if (desc.includes('centos'))  os = 'CentOS';
+                else if (desc.includes('rocky'))   os = 'Rocky';
+                else if (desc.includes('windows server 2022')) os = 'WS 2022';
+                else if (desc.includes('windows server 2019')) os = 'WS 2019';
+                else if (desc.includes('windows')) os = 'Windows';
+                else if (ostype.startsWith('win')) os = 'Windows';
+                else if (ostype === 'l26') os = 'Linux';
+                // For LXC try ostype field
+                if (!os && type === 'lxc') {
+                  const ost = cfg.data.data?.ostype || '';
+                  if (ost.includes('ubuntu'))  os = 'Ubuntu';
+                  else if (ost.includes('debian')) os = 'Debian';
+                  else if (ost.includes('alpine')) os = 'Alpine';
+                  else if (ost.includes('centos')) os = 'CentOS';
+                  else if (ost) os = ost.charAt(0).toUpperCase() + ost.slice(1);
+                }
+                // LXC IP from net0
+                if (type === 'lxc' && !ip) {
+                  const net0 = cfg.data.data?.net0 || '';
+                  const m = net0.match(/ip=([^,/]+)/);
+                  if (m && m[1] !== 'dhcp') ip = m[1];
+                }
+              } catch {}
+            }
+            return {
+              vmid: v.vmid, name: v.name || v.hostname, type, status: v.status,
+              uptime: v.uptime || 0, ip, os,
+              cpu_usage:   v.status === 'running' && v.cpu != null ? Math.round(v.cpu * 100) : 0,
+              mem_usage:   v.status === 'running' && v.mem && v.maxmem ? Math.round((v.mem / v.maxmem) * 100) : 0,
+              disk_usage:  v.disk && v.maxdisk ? Math.round((v.disk / v.maxdisk) * 100) : 0,
+              mem_used_gb: v.mem    ? (v.mem    / 1073741824).toFixed(1) : '0',
+              mem_max_gb:  v.maxmem ? (v.maxmem / 1073741824).toFixed(1) : '0',
+              disk_max_gb: v.maxdisk? (v.maxdisk/ 1073741824).toFixed(0) : '0',
+            };
+          };
+
+          const [vms, lxc] = await Promise.all([
+            Promise.all((vmsRes.data.data || []).map(v => enrichVm(v, 'qemu'))),
+            Promise.all((lxcRes.data.data || []).map(v => enrichVm(v, 'lxc'))),
+          ]);
           const all = [...vms, ...lxc];
           return {
             node:        n.node,
