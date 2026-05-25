@@ -317,6 +317,77 @@ router.get('/storage/mailbox', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Mail flow monthly trend ───────────────────────────────────────────────────
+router.get('/mail-flow-monthly', async (req, res) => {
+  try {
+    const token   = await getM365Token();
+    const axios   = require('axios');
+    const headers = { Authorization: `Bearer ${token}` };
+
+    // D180 covers last 6 months of daily data
+    const r = await axios.get(
+      `https://graph.microsoft.com/v1.0/reports/getEmailActivityCounts(period='D180')`,
+      { headers, timeout: 20000, maxRedirects: 5 }
+    );
+
+    const raw = typeof r.data === 'string' ? r.data : '';
+    if (!raw) return res.json({ months: [] });
+
+    // Parse CSV
+    const lines = raw.replace(/^\uFEFF/, '').trim().split('\n').filter(Boolean);
+    const hdrs  = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+    const rows  = lines.slice(1).map(line => {
+      const vals = []; let cur = '', inQ = false;
+      for (const ch of line) {
+        if (ch === '"') inQ = !inQ;
+        else if (ch === ',' && !inQ) { vals.push(cur.trim()); cur = ''; }
+        else cur += ch;
+      }
+      vals.push(cur.trim());
+      const obj = {};
+      hdrs.forEach((h, i) => obj[h] = (vals[i] || '').replace(/^"|"$/g, ''));
+      return obj;
+    });
+
+    // Build last 6 monthly buckets
+    const now = new Date();
+    const monthMap = {};
+    for (let i = 5; i >= 0; i--) {
+      const d   = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      monthMap[key] = {
+        label: d.toLocaleString('en', { month: 'short', year: 'numeric' }),
+        send: 0, receive: 0, read: 0,
+      };
+    }
+
+    // Aggregate daily rows into monthly buckets
+    for (const row of rows) {
+      const dateStr = row['Report Date'] || row['Report Refresh Date'] || '';
+      if (!dateStr) continue;
+      const d   = new Date(dateStr);
+      if (isNaN(d)) continue;
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      if (monthMap[key]) {
+        monthMap[key].send    += parseInt(row['Send']    || 0) || 0;
+        monthMap[key].receive += parseInt(row['Receive'] || 0) || 0;
+        monthMap[key].read    += parseInt(row['Read']    || 0) || 0;
+      }
+    }
+
+    const months = Object.values(monthMap);
+
+    // Trend vs previous month
+    const last    = months[months.length - 1];
+    const prevM   = months[months.length - 2];
+    const trend   = last && prevM ? last.send - prevM.send : null;
+
+    res.json({ months, trend });
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data?.error?.message || err.message });
+  }
+});
+
 // ── Mail flow per domain ──────────────────────────────────────────────────────
 router.get('/mail-flow', async (req, res) => {
   const period = ['D7','D30','D90','D180'].includes(req.query.period) ? req.query.period : 'D30';
