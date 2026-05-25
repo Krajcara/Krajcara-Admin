@@ -45,8 +45,17 @@ function VmRow({ vm, node, onAction, canManage }) {
         <div className="flex items-center gap-2">
           <span className={cn('w-2 h-2 rounded-full flex-shrink-0', STATUS_DOT[vm.status] || 'bg-gray-300')} />
           <div>
-            <p className="text-sm font-medium text-gray-900 dark:text-white">{vm.name}</p>
-            <p className="text-xs text-gray-400">#{vm.vmid} · {vm.type.toUpperCase()}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium text-gray-900 dark:text-white">{vm.name}</p>
+              <span className={cn('text-xs px-1.5 py-0.5 rounded font-medium',
+                vm.type === 'lxc'
+                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
+                  : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+              )}>
+                {vm.type === 'lxc' ? 'LXC' : 'VM'}
+              </span>
+            </div>
+            <p className="text-xs text-gray-400">#{vm.vmid}</p>
           </div>
         </div>
       </td>
