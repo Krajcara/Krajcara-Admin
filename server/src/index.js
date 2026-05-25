@@ -306,23 +306,46 @@ app.get('/api/tv/public', async (req, res) => {
         const headers    = { Authorization: `PVEAPIToken=${token}` };
         const nodesRes   = await axios.get(`${url}/api2/json/nodes`, { headers, httpsAgent, timeout: 8000 });
         const nodes      = nodesRes.data.data || [];
-        const details    = await Promise.all(nodes.filter(n => n.status === 'online').map(async n => {
-          const [vms, lxc] = await Promise.all([
+        const details = await Promise.all(nodes.filter(n => n.status === 'online').map(async n => {
+          const [vmsRes, lxcRes] = await Promise.all([
             axios.get(`${url}/api2/json/nodes/${n.node}/qemu`, { headers, httpsAgent, timeout: 6000 }).catch(() => ({ data: { data: [] } })),
             axios.get(`${url}/api2/json/nodes/${n.node}/lxc`,  { headers, httpsAgent, timeout: 6000 }).catch(() => ({ data: { data: [] } })),
           ]);
-          const all = [...(vms.data.data||[]), ...(lxc.data.data||[])];
+          const vms = (vmsRes.data.data || []).map(v => ({
+            vmid: v.vmid, name: v.name, type: 'qemu', status: v.status,
+            uptime: v.uptime || 0,
+            cpu_usage:  v.status === 'running' && v.cpu != null ? Math.round(v.cpu * 100) : 0,
+            mem_usage:  v.status === 'running' && v.mem && v.maxmem ? Math.round((v.mem / v.maxmem) * 100) : 0,
+            disk_usage: v.disk && v.maxdisk ? Math.round((v.disk / v.maxdisk) * 100) : 0,
+            mem_used_gb: v.mem    ? (v.mem    / 1073741824).toFixed(1) : '0',
+            mem_max_gb:  v.maxmem ? (v.maxmem / 1073741824).toFixed(1) : '0',
+            disk_max_gb: v.maxdisk? (v.maxdisk/ 1073741824).toFixed(0) : '0',
+          }));
+          const lxc = (lxcRes.data.data || []).map(v => ({
+            vmid: v.vmid, name: v.name || v.hostname, type: 'lxc', status: v.status,
+            uptime: v.uptime || 0,
+            cpu_usage:  v.status === 'running' && v.cpu != null ? Math.round(v.cpu * 100) : 0,
+            mem_usage:  v.status === 'running' && v.mem && v.maxmem ? Math.round((v.mem / v.maxmem) * 100) : 0,
+            disk_usage: v.disk && v.maxdisk ? Math.round((v.disk / v.maxdisk) * 100) : 0,
+            mem_used_gb: v.mem    ? (v.mem    / 1073741824).toFixed(1) : '0',
+            mem_max_gb:  v.maxmem ? (v.maxmem / 1073741824).toFixed(1) : '0',
+            disk_max_gb: v.maxdisk? (v.maxdisk/ 1073741824).toFixed(0) : '0',
+          }));
+          const all = [...vms, ...lxc];
           return {
-            node:       n.node,
-            status:     n.status,
-            cpu_usage:  n.cpu != null ? Math.round(n.cpu * 100) : 0,
-            mem_usage:  n.mem && n.maxmem ? Math.round((n.mem / n.maxmem) * 100) : 0,
+            node:        n.node,
+            status:      n.status,
+            cpu_usage:   n.cpu != null ? Math.round(n.cpu * 100) : 0,
+            mem_usage:   n.mem && n.maxmem ? Math.round((n.mem / n.maxmem) * 100) : 0,
+            disk_usage:  n.disk && n.maxdisk ? Math.round((n.disk / n.maxdisk) * 100) : 0,
             mem_used_gb: n.mem    ? (n.mem    / 1073741824).toFixed(1) : '0',
             mem_max_gb:  n.maxmem ? (n.maxmem / 1073741824).toFixed(1) : '0',
-            maxcpu:     n.maxcpu,
-            uptime:     n.uptime,
-            vm_total:   all.length,
-            vm_running: all.filter(v => v.status === 'running').length,
+            maxcpu:      n.maxcpu,
+            uptime:      n.uptime,
+            vm_total:    all.length,
+            vm_running:  all.filter(v => v.status === 'running').length,
+            vms:         vms.sort((a,b) => (a.name||'').localeCompare(b.name||'')),
+            lxc:         lxc.sort((a,b) => (a.name||'').localeCompare(b.name||'')),
           };
         }));
         proxmox = { configured: true, nodes: details.sort((a,b) => a.node.localeCompare(b.node)) };
