@@ -74,22 +74,27 @@ Accessible via the shield icon in the header.
 
 ### Phase 8 — Patch Management
 - **Patch Management** — software update tracking via Proxmox Guest Agent
-  - Checks all running VMs and LXC containers automatically at 04:00 daily
-  - Manual "Check all VMs" button with real-time progress via Socket.io
+  - Checks all running VMs automatically at 04:00 daily; manual "Check all VMs" button
+  - Real-time progress via Socket.io
+  - **Three groups:** Linux VMs, Windows VMs, LXC Containers (listed only — no patch check)
   - **Linux (Debian/Ubuntu)** — `apt list --upgradable`
   - **Linux (RHEL/CentOS/Rocky)** — `dnf check-update`
   - **Linux (Alpine)** — `apk list --upgradable`
   - **Windows** — PowerShell `Get-WindowsUpdate` (requires PSWindowsUpdate module + QEMU Guest Agent)
-  - VM cards with colour-coded status: green (up to date), yellow (updates available), orange (security updates)
-  - Click card to expand: full package list with current version → available version, severity badge
-  - Filter: All / Updates / Security / OK
-  - Summary: total updates, security updates, up-to-date VMs, VMs needing updates
+  - OS detection uses Proxmox VM config `ostype` field first (reliable, no guest agent needed for Windows detection)
+  - Deleted VMs are automatically removed from patch data on next check
+  - VM cards: green (up to date), yellow (updates), orange (security updates), LXC shown in neutral grey
+  - Click card to expand: package list with current → available version and severity badge
+  - Summary counts exclude LXC containers
+  - Filter: All / Updates / Security / OK / LXC
 
   **Windows VM setup (one time per VM):**
   ```powershell
   Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers
   Set-ExecutionPolicy RemoteSigned -Force
   ```
+
+  **Proxmox token permission required:** `VM.Monitor` or admin role on the token
 
 ### Phase 7 — Network Management
 - **IP Space** — VLAN and IP address management
@@ -109,7 +114,8 @@ Accessible via the shield icon in the header.
   - Router offline / back online (every 15 minutes, ping)
   - DNS server offline / back online (every 15 minutes, ping)
   - Entra ID client secret expiring ≤30 days or expired (every 15 minutes)
-- **Email notifications via M365** — configure in Settings → Notifications; requires `Mail.Send` permission; HTML email via Microsoft Graph
+  - Licence expiring — annual: 60/30/7 days before; monthly: 7/3 days before; expired: every 3 days
+- **Email notifications** — M365 (Microsoft Graph) or SMTP fallback (Gmail etc); configure in Settings → Notifications; M365 requires `Mail.Send` permission
 - **Sidebar accordion navigation** — groups collapsed by default; one group open at a time; active route auto-opens its group
 - **Status Page link** — moved to header (shield icon)
 
@@ -140,7 +146,7 @@ Accessible via the shield icon in the header.
   - Automatic daily backup at 03:00 — keeps last 7 auto-backups, 10 manual
 
 ### Phase 4 — Infrastructure
-- **Proxmox** — API token auth; nodes, VMs, LXC with CPU/RAM/disk; start/stop/reboot/shutdown; storage overview; all sorted alphabetically
+- **Proxmox** — API token auth; nodes, VMs and LXC with CPU/RAM/disk; start/stop/reboot/shutdown; storage overview; all sorted alphabetically; VM/LXC type badge next to each name
 - **Network Scanner** — Hosts (CRUD), New Scan (6 nmap profiles + custom, real-time progress), Scan History (expandable port table, detailed diff)
 - **Scan Automation** — Schedules (cron-based), Alert Rules (triggers + email/webhook), Alerts Log
 
@@ -179,6 +185,23 @@ Accessible via the shield icon in the header.
 - ✅ **Phase 6** — Health & Notifications
 - ✅ **Phase 7** — Network Management (IP Space, Scanner Diff)
 - ✅ **Phase 8** — Patch Management
+
+## TV Monitor
+
+Public fullscreen dashboard at `/tv` — no login required, dark theme, auto-refresh every 30 seconds.
+Accessible via the monitor icon in the header.
+
+**Two tabs:**
+
+**Overview** — three columns:
+- Uptime Monitor: overall status banner + all monitors with status dot, latency, UP/DOWN badge
+- Middle: Proxmox node cards (CPU/RAM/Disk bars) + Network (routers and DNS online/offline) + Internet Speed (Download/Upload/Ping)
+- Alerts: last 8 notifications with type icon and time
+
+**Proxmox** — optimized for many VMs:
+- Node summary bar: CPU/RAM/Disk bars, uptime, VM count per node
+- VM grid (6 per row) grouped by node: Name, Type badge (VM/LXC), VMID, Status, CPU/RAM/Disk bars, OS, IP address
+- Stopped VMs shown faded
 
 ## Project structure
 
