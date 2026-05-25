@@ -20,6 +20,7 @@ import NetworkScannerPage from './pages/NetworkScannerPage'
 import ScanAutomationPage from './pages/ScanAutomationPage'
 import IPSpacePage          from './pages/IPSpacePage'
 import PatchManagementPage  from './pages/PatchManagementPage'
+import TVPage               from './pages/TVPage'
 import NetSpeedPage       from './pages/NetSpeedPage'
 import M365Page           from './pages/M365Page'
 import BackupPage         from './pages/BackupPage'
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="/login"           element={<LoginPage />} />
         <Route path="/change-password" element={<ChangePasswordPage />} />
         <Route path="/status"          element={<StatusPage />} />
+        <Route path="/tv"              element={<TVPage />} />
 
         {/* Protected routes */}
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
