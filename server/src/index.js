@@ -271,10 +271,72 @@ app.get('/api/routers/:id/ping/public', async (req, res) => {
     res.json({ alive: false });
   }
 });
+// Public TV dashboard endpoint — all data in one request
+app.get('/api/tv/public', async (req, res) => {
+  try {
+    const db = require('./db/database');
+
+    // Monitors
+    const monitors = db.prepare(
+      'SELECT id, label, type, target, last_status, last_latency_ms, last_checked_at FROM monitors WHERE enabled=1 ORDER BY label'
+    ).all();
+
+    // Net speed — last test
+    const lastSpeed = db.prepare(
+      "SELECT download, upload, ping, created_at FROM speed_tests WHERE status='done' ORDER BY created_at DESC LIMIT 1"
+    ).get();
+
+    // Notifications — last 6 unread or recent
+    const notifications = db.prepare(
+      "SELECT * FROM notifications ORDER BY created_at DESC LIMIT 8"
+    ).all();
+
+    // Proxmox nodes
+    let proxmox = { configured: false, nodes: [] };
+    try {
+      const url     = db.prepare("SELECT value FROM settings WHERE key='proxmox_url'").get()?.value;
+      const tokenId = db.prepare("SELECT value FROM settings WHERE key='proxmox_token_id'").get()?.value || '';
+      const user    = db.prepare("SELECT value FROM settings WHERE key='proxmox_user'").get()?.value || 'root@pam';
+      const secret  = db.prepare("SELECT value FROM settings WHERE key='proxmox_api_token'").get()?.value;
+      if (url && secret) {
+        const axios      = require('axios');
+        const https      = require('https');
+        const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+        const token      = tokenId ? `${user}!${tokenId}=${secret}` : secret;
+        const headers    = { Authorization: `PVEAPIToken=${token}` };
+        const nodesRes   = await axios.get(`${url}/api2/json/nodes`, { headers, httpsAgent, timeout: 8000 });
+        const nodes      = nodesRes.data.data || [];
+        const details    = await Promise.all(nodes.filter(n => n.status === 'online').map(async n => {
+          const [vms, lxc] = await Promise.all([
+            axios.get(`${url}/api2/json/nodes/${n.node}/qemu`, { headers, httpsAgent, timeout: 6000 }).catch(() => ({ data: { data: [] } })),
+            axios.get(`${url}/api2/json/nodes/${n.node}/lxc`,  { headers, httpsAgent, timeout: 6000 }).catch(() => ({ data: { data: [] } })),
+          ]);
+          const all = [...(vms.data.data||[]), ...(lxc.data.data||[])];
+          return {
+            node:       n.node,
+            status:     n.status,
+            cpu_usage:  n.cpu != null ? Math.round(n.cpu * 100) : 0,
+            mem_usage:  n.mem && n.maxmem ? Math.round((n.mem / n.maxmem) * 100) : 0,
+            mem_used_gb: n.mem    ? (n.mem    / 1073741824).toFixed(1) : '0',
+            mem_max_gb:  n.maxmem ? (n.maxmem / 1073741824).toFixed(1) : '0',
+            maxcpu:     n.maxcpu,
+            uptime:     n.uptime,
+            vm_total:   all.length,
+            vm_running: all.filter(v => v.status === 'running').length,
+          };
+        }));
+        proxmox = { configured: true, nodes: details.sort((a,b) => a.node.localeCompare(b.node)) };
+      }
+    } catch {}
+
+    res.json({ monitors, lastSpeed, notifications, proxmox });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/proxmox/public', async (req, res) => {
   try {
-    const proxmoxRoute = require('./routes/proxmox');
-    // Reuse same logic but without auth
     const axios = require('axios');
     const https = require('https');
     const db    = require('./db/database');
