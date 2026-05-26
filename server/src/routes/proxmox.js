@@ -69,77 +69,159 @@ router.get('/nodes', async (req, res) => {
         pveGet(cfg.url, `/nodes/${node.node}/storage`, cfg.token).catch(() => []),
       ]);
 
-      const enrichedVMs = await Promise.all(vms.map(async (vm) => {
-        let config = {}, agentIp = null;
-        try { config = await pveGet(cfg.url, `/nodes/${node.node}/qemu/${vm.vmid}/config`, cfg.token); } catch {}
-        const isRunning = vm.status === 'running';
-        if (isRunning) {
-          try {
-            const info = await pveGet(cfg.url, `/nodes/${node.node}/qemu/${vm.vmid}/agent/network-get-interfaces`, cfg.token);
-            for (const iface of (info?.result || [])) {
-              if (iface.name === 'lo') continue;
-              const ipv4 = (iface['ip-addresses'] || []).find(a => a['ip-address-type'] === 'ipv4');
-              if (ipv4) { agentIp = ipv4['ip-address']; break; }
-            }
-          } catch {}
-        }
-        if (!agentIp && config.net0) { const m = config.net0.match(/ip=([^,/]+)/); if (m) agentIp = m[1]; }
+      // ── Pulse-style filesystem filter & dedup ──────────────────────────────
+      const VIRTUAL_FS = new Set(['tmpfs','devtmpfs','cgroup','cgroup2','sysfs','proc',
+        'devpts','securityfs','debugfs','tracefs','fusectl','configfs','pstore',
+        'hugetlbfs','mqueue','bpf','overlay','overlayfs','autofs','fdescfs','devfs',
+        'linprocfs','linsysfs']);
+      const READONLY_FS  = ['erofs','squashfs','iso9660','cdfs','udf','cramfs','romfs'];
+      const SKIP_PREFIXES = ['/dev','/proc','/sys','/run','/var/run/','/var/lib/containers','/snap'];
+      const OVERLAY_PATS  = ['/overlay2/','/overlay/','/diff/','/merged'];
+      const NETWORK_FS    = ['fuse','9p','nfs','cifs','smb'];
 
-        // Get real disk usage via guest agent get-fsinfo
+      const shouldSkipFS = (type, mountpoint, totalBytes, usedBytes) => {
+        const t = (type || '').toLowerCase();
+        if (VIRTUAL_FS.has(t)) return true;
+        if (READONLY_FS.some(r => t.includes(r))) return true;
+        if (NETWORK_FS.some(n => t.includes(n))) return true;
+        if ((t.includes('overlay') || t.includes('overlayfs')) && totalBytes > 0 && usedBytes >= totalBytes) return true;
+        const mp = mountpoint || '';
+        if (SKIP_PREFIXES.some(p => mp.startsWith(p))) return true;
+        if (OVERLAY_PATS.some(p => mp.includes(p))) return true;
+        return false;
+      };
+
+      const calcDiskFromFsinfo = (mounts) => {
         let diskUsed = 0, diskTotal = 0;
-        if (isRunning) {
-          try {
-            const fsinfo = await pveGet(cfg.url, `/nodes/${node.node}/qemu/${vm.vmid}/agent/get-fsinfo`, cfg.token);
-            const mounts = fsinfo?.result || [];
-            // Sum up root and main partitions, skip tmpfs/devtmpfs/overlay
-            const skip = ['tmpfs','devtmpfs','overlay','squashfs','proc','sysfs','cgroup','cgroup2','pstore','bpf','tracefs','debugfs','hugetlbfs','mqueue','fusectl','configfs','fuse'];
-            for (const fs of mounts) {
-              if (skip.includes(fs.type)) continue;
-              if (fs['total-bytes'] && fs['used-bytes']) {
-                // Only count root or largest partition to avoid double counting
-                if (fs.mountpoint === '/' || (!diskTotal && fs['total-bytes'] > diskTotal)) {
-                  diskTotal = fs['total-bytes'];
-                  diskUsed  = fs['used-bytes'];
-                }
-              }
+        const seen = new Map();
+        for (const fs of (mounts || [])) {
+          const tb = fs['total-bytes'] || 0;
+          const ub = fs['used-bytes']  || 0;
+          if (!tb || !ub) continue;
+          if (shouldSkipFS(fs.type, fs.mountpoint, tb, ub)) continue;
+          // Build dedup key from disk device
+          let diskKey = '';
+          const diskRaw = Array.isArray(fs.disk) ? fs.disk[0] : fs.disk;
+          if (diskRaw && typeof diskRaw === 'object') {
+            diskKey = diskRaw.dev || diskRaw.serial ||
+              (diskRaw['bus-type'] ? `${diskRaw['bus-type']}-${diskRaw.target || 0}` : '');
+          }
+          if (!diskKey && fs.mountpoint) {
+            // Windows drive letters (C:, D:)
+            if (fs.mountpoint.length >= 2 && fs.mountpoint[1] === ':') {
+              diskKey = fs.mountpoint.substring(0, 2).toUpperCase();
+            } else {
+              diskKey = fs.mountpoint === '/' ? 'root' : fs.mountpoint;
             }
-          } catch {}
+          }
+          const dedupeKey = `${diskKey}:${tb}`;
+          if (!seen.has(dedupeKey)) {
+            seen.set(dedupeKey, true);
+            diskTotal += tb;
+            diskUsed  += ub;
+          }
         }
-        // Fallback to Proxmox reported maxdisk for disk_max_gb display
-        const diskMaxBytes = vm.maxdisk || 0;
-        const diskUsagePct = diskTotal > 0 ? Math.round((diskUsed / diskTotal) * 100) : 0;
-        return {
-          vmid: vm.vmid, name: vm.name, status: vm.status, type: 'qemu',
-          os: mapOs(config.ostype, config.description || vm.name), ip: agentIp,
-          cpu_usage:  isRunning && vm.cpu    != null ? Math.round(vm.cpu * 100) : 0,
-          mem_usage:  isRunning && vm.mem    && vm.maxmem  ? Math.round((vm.mem  / vm.maxmem)  * 100) : 0,
-          disk_usage:   diskUsagePct,
-          disk_used_gb: diskTotal > 0 ? (diskUsed / 1073741824).toFixed(1) : null,
-          mem_used_gb:  vm.mem    ? (vm.mem    / 1073741824).toFixed(1) : '0',
-          mem_max_gb:   vm.maxmem ? (vm.maxmem / 1073741824).toFixed(1) : '0',
-          disk_max_gb:  diskTotal > 0 ? (diskTotal / 1073741824).toFixed(1) : (diskMaxBytes ? (diskMaxBytes / 1073741824).toFixed(1) : '0'),
-          uptime_s: vm.uptime || 0, cpus: vm.cpus || config.cores || 1,
-        };
+        return { diskUsed, diskTotal };
+      };
+      // ── End Pulse-style helpers ────────────────────────────────────────────
+
+      // Enrich each VM individually — catch errors per VM so one failure doesn't kill the whole node
+      const enrichedVMs = await Promise.all(vms.map(async (vm) => {
+        try {
+          let config = {}, agentIp = null;
+          try { config = await pveGet(cfg.url, `/nodes/${node.node}/qemu/${vm.vmid}/config`, cfg.token); } catch {}
+          const isRunning = vm.status === 'running';
+          if (isRunning) {
+            try {
+              const info = await pveGet(cfg.url, `/nodes/${node.node}/qemu/${vm.vmid}/agent/network-get-interfaces`, cfg.token);
+              for (const iface of (info?.result || [])) {
+                if (iface.name === 'lo') continue;
+                const ipv4 = (iface['ip-addresses'] || []).find(a => a['ip-address-type'] === 'ipv4');
+                if (ipv4) { agentIp = ipv4['ip-address']; break; }
+              }
+            } catch {}
+          }
+          if (!agentIp && config.net0) { const m = config.net0.match(/ip=([^,/]+)/); if (m) agentIp = m[1]; }
+
+          // Disk via guest agent fsinfo (Pulse dedup logic)
+          let diskUsed = 0, diskTotal = 0;
+          if (isRunning) {
+            try {
+              const fsinfo = await pveGet(cfg.url, `/nodes/${node.node}/qemu/${vm.vmid}/agent/get-fsinfo`, cfg.token);
+              ({ diskUsed, diskTotal } = calcDiskFromFsinfo(fsinfo?.result));
+            } catch {}
+          }
+          const diskMaxBytes = vm.maxdisk || 0;
+          const diskUsagePct = diskTotal > 0 ? Math.round((diskUsed / diskTotal) * 100) : 0;
+
+          return {
+            vmid: vm.vmid, name: vm.name, status: vm.status, type: 'qemu',
+            os: mapOs(config.ostype, config.description || vm.name), ip: agentIp,
+            cpu_usage:    isRunning && vm.cpu   != null ? Math.round(vm.cpu * 100) : 0,
+            mem_usage:    isRunning && vm.mem   && vm.maxmem ? Math.round((vm.mem / vm.maxmem) * 100) : 0,
+            disk_usage:   diskUsagePct,
+            disk_used_gb: diskTotal > 0 ? (diskUsed / 1073741824).toFixed(1) : null,
+            mem_used_gb:  vm.mem    ? (vm.mem    / 1073741824).toFixed(1) : '0',
+            mem_max_gb:   vm.maxmem ? (vm.maxmem / 1073741824).toFixed(1) : '0',
+            disk_max_gb:  diskTotal > 0 ? (diskTotal / 1073741824).toFixed(1) : (diskMaxBytes ? (diskMaxBytes / 1073741824).toFixed(1) : '0'),
+            uptime_s: vm.uptime || 0, cpus: vm.cpus || config.cores || 1,
+          };
+        } catch (e) {
+          // If a single VM enrichment fails, return basic data instead of crashing the node
+          console.error(`[Proxmox] VM ${vm.vmid} enrichment error: ${e.message}`);
+          return {
+            vmid: vm.vmid, name: vm.name, status: vm.status, type: 'qemu',
+            os: null, ip: null, cpu_usage: 0, mem_usage: 0, disk_usage: 0,
+            disk_used_gb: null, mem_used_gb: '0', mem_max_gb: '0', disk_max_gb: '0',
+            uptime_s: vm.uptime || 0, cpus: vm.cpus || 1,
+          };
+        }
       }));
 
       const enrichedLXC = await Promise.all(lxc.map(async (ct) => {
-        let config = {};
-        try { config = await pveGet(cfg.url, `/nodes/${node.node}/lxc/${ct.vmid}/config`, cfg.token); } catch {}
-        let ip = null;
-        const m = (config.net0 || '').match(/ip=([^,/]+)/);
-        if (m && m[1] !== 'dhcp') ip = m[1];
-        const isRunning = ct.status === 'running';
-        return {
-          vmid: ct.vmid, name: ct.name || ct.hostname, status: ct.status, type: 'lxc',
-          os: config.ostype || ct.name, ip,
-          cpu_usage:  isRunning && ct.cpu  != null ? Math.round(ct.cpu * 100) : 0,
-          mem_usage:  isRunning && ct.mem  && ct.maxmem  ? Math.round((ct.mem  / ct.maxmem)  * 100) : 0,
-          disk_usage: ct.disk  && ct.maxdisk ? Math.round((ct.disk / ct.maxdisk) * 100) : 0,
-          mem_used_gb:  ct.mem    ? (ct.mem    / 1073741824).toFixed(1) : '0',
-          mem_max_gb:   ct.maxmem ? (ct.maxmem / 1073741824).toFixed(1) : '0',
-          disk_max_gb:  ct.maxdisk? (ct.maxdisk/ 1073741824).toFixed(1) : '0',
-          uptime_s: ct.uptime || 0, cpus: ct.cpus || 1,
-        };
+        try {
+          let config = {};
+          try { config = await pveGet(cfg.url, `/nodes/${node.node}/lxc/${ct.vmid}/config`, cfg.token); } catch {}
+          let ip = null;
+          const m = (config.net0 || '').match(/ip=([^,/]+)/);
+          if (m && m[1] !== 'dhcp') ip = m[1];
+          const isRunning = ct.status === 'running';
+
+          // LXC disk — use maxdisk from status (Proxmox knows LXC rootfs size)
+          // ct.disk = used bytes for LXC (unlike QEMU where it's 0)
+          let diskUsed  = ct.disk    || 0;
+          let diskTotal = ct.maxdisk || 0;
+          // If disk=0 but maxdisk exists, try diskinfo endpoint
+          if (isRunning && diskTotal > 0 && diskUsed === 0) {
+            try {
+              const statusData = await pveGet(cfg.url, `/nodes/${node.node}/lxc/${ct.vmid}/status/current`, cfg.token);
+              if (statusData?.disk)    diskUsed  = statusData.disk;
+              if (statusData?.maxdisk) diskTotal = statusData.maxdisk;
+            } catch {}
+          }
+          const diskUsagePct = diskTotal > 0 ? Math.round((diskUsed / diskTotal) * 100) : 0;
+
+          return {
+            vmid: ct.vmid, name: ct.name || ct.hostname, status: ct.status, type: 'lxc',
+            os: config.ostype || ct.name, ip,
+            cpu_usage:    isRunning && ct.cpu != null ? Math.round(ct.cpu * 100) : 0,
+            mem_usage:    isRunning && ct.mem && ct.maxmem ? Math.round((ct.mem / ct.maxmem) * 100) : 0,
+            disk_usage:   diskUsagePct,
+            disk_used_gb: diskUsed  ? (diskUsed  / 1073741824).toFixed(1) : null,
+            mem_used_gb:  ct.mem    ? (ct.mem    / 1073741824).toFixed(1) : '0',
+            mem_max_gb:   ct.maxmem ? (ct.maxmem / 1073741824).toFixed(1) : '0',
+            disk_max_gb:  diskTotal ? (diskTotal / 1073741824).toFixed(1) : '0',
+            uptime_s: ct.uptime || 0, cpus: ct.cpus || 1,
+          };
+        } catch (e) {
+          console.error(`[Proxmox] LXC ${ct.vmid} enrichment error: ${e.message}`);
+          return {
+            vmid: ct.vmid, name: ct.name || ct.hostname, status: ct.status, type: 'lxc',
+            os: null, ip: null, cpu_usage: 0, mem_usage: 0, disk_usage: 0,
+            disk_used_gb: null, mem_used_gb: '0', mem_max_gb: '0', disk_max_gb: '0',
+            uptime_s: ct.uptime || 0, cpus: ct.cpus || 1,
+          };
+        }
       }));
 
       const enrichedStorages = storages.map(s => ({
