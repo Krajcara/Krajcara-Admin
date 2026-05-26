@@ -85,38 +85,39 @@ router.get('/nodes', async (req, res) => {
         }
         if (!agentIp && config.net0) { const m = config.net0.match(/ip=([^,/]+)/); if (m) agentIp = m[1]; }
 
-        // Get allocated disk size from config (scsi0, virtio0, ide0, sata0...)
-        let diskAllocatedBytes = 0;
-        const diskKeys = Object.keys(config).filter(k => /^(scsi|virtio|ide|sata)\d+$/.test(k));
-        for (const key of diskKeys) {
-          const val = config[key] || '';
-          // Skip CD-ROM entries (media=cdrom or .iso files)
-          if (val.includes('media=cdrom') || val.includes('.iso')) continue;
-          const sizeMatch = val.match(/size=(\d+)([KMGT]?)/i);
-          if (sizeMatch) {
-            const num  = parseInt(sizeMatch[1]);
-            const unit = (sizeMatch[2] || 'G').toUpperCase();
-            const mult = { K: 1024, M: 1048576, G: 1073741824, T: 1099511627776 }[unit] || 1073741824;
-            diskAllocatedBytes += num * mult;
-          }
+        // Get real disk usage via guest agent get-fsinfo
+        let diskUsed = 0, diskTotal = 0;
+        if (isRunning) {
+          try {
+            const fsinfo = await pveGet(cfg.url, `/nodes/${node.node}/qemu/${vm.vmid}/agent/get-fsinfo`, cfg.token);
+            const mounts = fsinfo?.result || [];
+            // Sum up root and main partitions, skip tmpfs/devtmpfs/overlay
+            const skip = ['tmpfs','devtmpfs','overlay','squashfs','proc','sysfs','cgroup','cgroup2','pstore','bpf','tracefs','debugfs','hugetlbfs','mqueue','fusectl','configfs','fuse'];
+            for (const fs of mounts) {
+              if (skip.includes(fs.type)) continue;
+              if (fs['total-bytes'] && fs['used-bytes']) {
+                // Only count root or largest partition to avoid double counting
+                if (fs.mountpoint === '/' || (!diskTotal && fs['total-bytes'] > diskTotal)) {
+                  diskTotal = fs['total-bytes'];
+                  diskUsed  = fs['used-bytes'];
+                }
+              }
+            }
+          } catch {}
         }
-        // Fallback to Proxmox reported maxdisk
-        if (!diskAllocatedBytes && vm.maxdisk) diskAllocatedBytes = vm.maxdisk;
-
-        // disk_usage for QEMU = allocated / total (how much of provisioned space is used on storage)
-        // vm.disk = actual bytes written to image file on host storage
-        const diskUsed = vm.disk || 0;
-        const diskUsagePct = diskAllocatedBytes > 0 ? Math.round((diskUsed / diskAllocatedBytes) * 100) : 0;
+        // Fallback to Proxmox reported maxdisk for disk_max_gb display
+        const diskMaxBytes = vm.maxdisk || 0;
+        const diskUsagePct = diskTotal > 0 ? Math.round((diskUsed / diskTotal) * 100) : 0;
         return {
           vmid: vm.vmid, name: vm.name, status: vm.status, type: 'qemu',
           os: mapOs(config.ostype, config.description || vm.name), ip: agentIp,
           cpu_usage:  isRunning && vm.cpu    != null ? Math.round(vm.cpu * 100) : 0,
           mem_usage:  isRunning && vm.mem    && vm.maxmem  ? Math.round((vm.mem  / vm.maxmem)  * 100) : 0,
-          disk_usage:  diskUsagePct,
-          disk_used_gb: diskUsed ? (diskUsed / 1073741824).toFixed(1) : '0',
+          disk_usage:   diskUsagePct,
+          disk_used_gb: diskTotal > 0 ? (diskUsed / 1073741824).toFixed(1) : null,
           mem_used_gb:  vm.mem    ? (vm.mem    / 1073741824).toFixed(1) : '0',
           mem_max_gb:   vm.maxmem ? (vm.maxmem / 1073741824).toFixed(1) : '0',
-          disk_max_gb:  diskAllocatedBytes ? (diskAllocatedBytes / 1073741824).toFixed(1) : '0',
+          disk_max_gb:  diskTotal > 0 ? (diskTotal / 1073741824).toFixed(1) : (diskMaxBytes ? (diskMaxBytes / 1073741824).toFixed(1) : '0'),
           uptime_s: vm.uptime || 0, cpus: vm.cpus || config.cores || 1,
         };
       }));
