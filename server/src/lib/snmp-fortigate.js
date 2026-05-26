@@ -208,19 +208,24 @@ async function pollFortigate(ip, cfg) {
     });
     ifInHC.forEach(r => {
       const i = idx(r.oid, OID.ifHCInOctets);
-      if (byIdx[i]) byIdx[i].rx_bytes = parseInt(r.value) || 0;
+      const v = parseInt(r.value) || 0;
+      if (byIdx[i]) byIdx[i].rx_bytes = v;
     });
     ifOutHC.forEach(r => {
       const i = idx(r.oid, OID.ifHCOutOctets);
-      if (byIdx[i]) byIdx[i].tx_bytes = parseInt(r.value) || 0;
+      const v = parseInt(r.value) || 0;
+      if (byIdx[i]) byIdx[i].tx_bytes = v;
     });
+    // Counter32 fallback — only use if HC counter is zero or missing
     ifIn32.forEach(r => {
       const i = idx(r.oid, OID.ifInOctets);
-      if (byIdx[i] && byIdx[i].rx_bytes == null) byIdx[i].rx_bytes = parseInt(r.value) || 0;
+      const v = parseInt(r.value) || 0;
+      if (byIdx[i] && !byIdx[i].rx_bytes && v > 0) byIdx[i].rx_bytes = v;
     });
     ifOut32.forEach(r => {
       const i = idx(r.oid, OID.ifOutOctets);
-      if (byIdx[i] && byIdx[i].tx_bytes == null) byIdx[i].tx_bytes = parseInt(r.value) || 0;
+      const v = parseInt(r.value) || 0;
+      if (byIdx[i] && !byIdx[i].tx_bytes && v > 0) byIdx[i].tx_bytes = v;
     });
     ifAliases.forEach(r => {
       const i = idx(r.oid, OID.ifAlias);
