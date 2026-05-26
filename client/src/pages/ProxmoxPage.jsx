@@ -72,6 +72,11 @@ function VmRow({ vm, node, onAction, canManage }) {
           ? <><UsageBar pct={vm.mem_usage} color="bg-purple-500" /><p className="text-xs text-gray-400 mt-0.5">{vm.mem_used_gb} / {vm.mem_max_gb} GB</p></>
           : <span className="text-xs text-gray-300">—</span>}
       </td>
+      <td className="px-4 py-2.5 min-w-[100px]">
+        {vm.disk_max_gb && vm.disk_max_gb !== '0'
+          ? <><UsageBar pct={vm.disk_usage} color="bg-orange-500" /><p className="text-xs text-gray-400 mt-0.5">{vm.disk_used_gb || '?'} / {vm.disk_max_gb} GB</p></>
+          : <span className="text-xs text-gray-300">—</span>}
+      </td>
       <td className="px-4 py-2.5 text-xs text-gray-500">{vm.uptime_s ? fmtUptime(vm.uptime_s) : '—'}</td>
       {canManage && (
         <td className="px-4 py-2.5">
@@ -161,6 +166,7 @@ function NodeCard({ node, onAction, canManage }) {
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">IP</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-28">CPU</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-32">Memory</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-32">Disk</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Uptime</th>
                     {canManage && <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>}
                   </tr>
