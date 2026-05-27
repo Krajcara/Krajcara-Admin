@@ -175,7 +175,7 @@ async function checkRouters() {
     } catch {}
 
     const lastStatus = db.prepare(
-      "SELECT type FROM notifications WHERE module='routers' AND entity_id=? ORDER BY created_at DESC LIMIT 1"
+      "SELECT type FROM notifications WHERE module='routers' AND entity_id=? AND archived=0 ORDER BY created_at DESC LIMIT 1"
     ).get(String(r.id));
 
     if (!alive && lastStatus?.type !== 'error') {
@@ -272,7 +272,7 @@ async function checkProxmoxVMs() {
         const isRunning  = vm.status === 'running';
 
         const lastNotif = db.prepare(
-          "SELECT type FROM notifications WHERE module='proxmox' AND entity_id=? ORDER BY created_at DESC LIMIT 1"
+          "SELECT type FROM notifications WHERE module='proxmox' AND entity_id=? AND archived=0 ORDER BY created_at DESC LIMIT 1"
         ).get(entityId);
 
         if (!isRunning && lastNotif?.type !== 'error') {
@@ -344,6 +344,7 @@ function checkLicenceExpiry() {
       const exists = db.prepare(`
         SELECT id FROM notifications
         WHERE module='licences' AND entity_id=? AND type='error'
+        AND archived=0
         AND created_at >= datetime('now', '-3 days')
       `).get(String(lic.id));
       if (!exists) {
