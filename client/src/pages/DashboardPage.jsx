@@ -5,7 +5,7 @@ import {
   AlertCircle, AlertTriangle, Info, Bell
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle, Spinner, Badge } from '../components/shared/UI'
-import { cn } from '../lib/utils'
+import { cn, timeAgo } from '../lib/utils'
 import api from '../lib/api'
 import { useSocket } from '../hooks/useSocket'
 
