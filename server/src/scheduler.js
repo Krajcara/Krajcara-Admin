@@ -40,12 +40,20 @@ function start() {
     } catch (e) { console.error('[Scheduler] Auto-backup failed:', e.message); }
   });
 
-  // Every 15 minutes — notification checks
+  // Every 15 minutes — notification checks (monitors, routers, dns, proxmox)
   cron.schedule('*/15 * * * *', () => {
     try {
       const { runNotificationChecks } = require('./services/notificationService');
       runNotificationChecks();
     } catch (e) { console.error('[Scheduler] Notification check error:', e.message); }
+  });
+
+  // Daily 03:00 — licence and entra expiry checks
+  cron.schedule('0 3 * * *', () => {
+    try {
+      const { runDailyNotificationChecks } = require('./services/notificationService');
+      runDailyNotificationChecks().catch(e => console.error('[Scheduler] Daily notif error:', e.message));
+    } catch (e) { console.error('[Scheduler] Daily notif init error:', e.message); }
   });
   cron.schedule('0 * * * *', () => {
     try {
