@@ -8,30 +8,41 @@ const { writeAuditLog } = require('../middleware/audit');
 const INSTALL_DIR = process.env.INSTALL_DIR || '/opt/krajcara-admin';
 
 // GET /api/update/check
-router.get('/check', requireAuth, requireRole('superadmin', 'admin'), (req, res) => {
+router.get('/check', requireAuth, requireRole('superadmin', 'admin'), async (req, res) => {
   try {
-    const localSha  = execSync('git rev-parse --short HEAD', { cwd: INSTALL_DIR, timeout: 10000 }).toString().trim();
-    const remoteSha = execSync('git ls-remote origin HEAD', { cwd: INSTALL_DIR, timeout: 15000 }).toString().split('\t')[0].substring(0, 7);
+    const localSha = execSync('git rev-parse --short HEAD', { cwd: INSTALL_DIR, timeout: 5000 }).toString().trim();
 
     let currentVersion = 'unknown';
     try {
-      // Force re-read package.json (clear require cache)
       const pkgPath = path.join(INSTALL_DIR, 'server/package.json');
       delete require.cache[pkgPath];
       currentVersion = require(pkgPath).version || 'unknown';
     } catch {}
 
-    let latestTag = null;
-    try {
-      latestTag = execSync('git describe --tags --abbrev=0 origin/main 2>/dev/null || true', { cwd: INSTALL_DIR, timeout: 10000 }).toString().trim();
-    } catch {}
+    // Use async exec for remote check to avoid blocking/ETIMEDOUT
+    const remoteSha = await new Promise((resolve) => {
+      exec('git ls-remote origin HEAD', { cwd: INSTALL_DIR, timeout: 12000 }, (err, stdout) => {
+        if (err || !stdout) return resolve(null);
+        resolve(stdout.split('\t')[0].substring(0, 7));
+      });
+    });
+
+    if (!remoteSha) {
+      return res.json({
+        up_to_date: true,
+        local_sha: localSha,
+        remote_sha: null,
+        current_version: currentVersion,
+        update_available: false,
+        error: 'Could not reach GitHub — assuming up to date',
+      });
+    }
 
     res.json({
       up_to_date:       localSha === remoteSha,
       local_sha:        localSha,
       remote_sha:       remoteSha,
       current_version:  currentVersion,
-      latest_tag:       latestTag || null,
       update_available: localSha !== remoteSha,
     });
   } catch (err) {
