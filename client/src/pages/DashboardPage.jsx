@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Activity, Server, KeyRound, AppWindow,
-  RefreshCw, Wifi, WifiOff, Download, Upload, CheckCircle, Globe
+  RefreshCw, Wifi, WifiOff, Download, Upload, CheckCircle, Globe,
+  AlertCircle, AlertTriangle, Info, Bell
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle, Spinner, Badge } from '../components/shared/UI'
 import { cn } from '../lib/utils'
@@ -346,6 +347,65 @@ function BottomRow({ lastSpeed, monitors, monitorStatuses }) {
   )
 }
 
+
+// ── Notifications panel ───────────────────────────────────────────────────────
+function NotificationsPanel({ notifications }) {
+  const TYPE_ICON = {
+    error:   <AlertCircle   className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />,
+    warning: <AlertTriangle className="w-3.5 h-3.5 text-yellow-500 flex-shrink-0 mt-0.5" />,
+    success: <CheckCircle   className="w-3.5 h-3.5 text-green-500 flex-shrink-0 mt-0.5" />,
+    info:    <Info          className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 mt-0.5" />,
+  }
+  const TYPE_BG = {
+    error:   'border-l-red-500 bg-red-50 dark:bg-red-900/10',
+    warning: 'border-l-yellow-500 bg-yellow-50 dark:bg-yellow-900/10',
+    success: 'border-l-green-500 bg-green-50 dark:bg-green-900/10',
+    info:    'border-l-blue-500 bg-blue-50 dark:bg-blue-900/10',
+  }
+  const unread = notifications.filter(n => !n.read).length
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CardTitle>Notifications</CardTitle>
+            {unread > 0 && (
+              <span className="bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 font-bold">{unread}</span>
+            )}
+          </div>
+          <a href="/notification-log" className="text-xs text-brand hover:underline">View all</a>
+        </div>
+      </CardHeader>
+      <div className="pb-3">
+        {notifications.length === 0 ? (
+          <div className="text-center py-6">
+            <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-1" />
+            <p className="text-sm text-gray-400">No notifications</p>
+          </div>
+        ) : (
+          <div className="space-y-1 px-4">
+            {notifications.map(n => (
+              <div key={n.id} className={cn(
+                'flex items-start gap-2.5 px-3 py-2 rounded-r-lg border-l-2 transition-colors',
+                TYPE_BG[n.type] || 'border-l-gray-300',
+                n.read && 'opacity-60'
+              )}>
+                {TYPE_ICON[n.type] || TYPE_ICON.info}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white leading-tight truncate">{n.title}</p>
+                  {n.message && <p className="text-xs text-gray-500 mt-0.5 truncate">{n.message}</p>}
+                </div>
+                <p className="text-xs text-gray-400 flex-shrink-0">{timeAgo(n.created_at)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const [monitors,         setMonitors]         = useState([])
@@ -355,6 +415,7 @@ export default function DashboardPage() {
   const [entraApps,        setEntraApps]         = useState([])
   const [lastSpeed,        setLastSpeed]         = useState(null)
   const [dns,              setDns]               = useState(null)
+  const [notifications,    setNotifications]     = useState([])
   const [loading,          setLoading]           = useState(true)
   const [lastRefresh,      setLastRefresh]       = useState(null)
 
@@ -367,13 +428,14 @@ export default function DashboardPage() {
 
   const loadAll = useCallback(async () => {
     try {
-      const [monitorsRes, proxmoxRes, licencesRes, entraRes, speedRes, dnsRes] = await Promise.allSettled([
+      const [monitorsRes, proxmoxRes, licencesRes, entraRes, speedRes, dnsRes, notifRes] = await Promise.allSettled([
         api.get('/monitors'),
         api.get('/proxmox/nodes'),
         api.get('/licences'),
         api.get('/licences/entra-apps'),
         api.get('/netspeed/tests?limit=1'),
         api.get('/dns/local'),
+        api.get('/notifications?limit=8'),
       ])
 
       if (monitorsRes.status === 'fulfilled') {
@@ -392,6 +454,7 @@ export default function DashboardPage() {
         setLastSpeed(tests.find(t => t.status === 'done') || null)
       }
       if (dnsRes.status      === 'fulfilled') setDns(dnsRes.value.data || [])
+      if (notifRes.status    === 'fulfilled') setNotifications(notifRes.value.data?.notifications || [])
       setLastRefresh(new Date())
     } catch {}
     finally { setLoading(false) }
@@ -429,6 +492,8 @@ export default function DashboardPage() {
       <ProxmoxRow proxmox={proxmox} />
 
       <DnsRow dnsServers={dns} />
+
+      <NotificationsPanel notifications={notifications} />
 
       <BottomRow
         lastSpeed={lastSpeed}
