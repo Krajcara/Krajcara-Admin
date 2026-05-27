@@ -342,11 +342,30 @@ export default function LicencesPage() {
 
   const entraWarnings = entraApps.filter(a => a.secret_status === 'expiring' || a.secret_status === 'expired').length
 
-  const handleRenew = async (l) => {
-    setRenewing(l.id)
+  const [renewTarget, setRenewTarget] = useState(null)
+  const [renewDate,   setRenewDate]   = useState('')
+
+  const openRenew = (l) => {
+    // Calculate suggested new expiry
+    const base = l.expiry_date ? new Date(l.expiry_date) : new Date()
+    if (l.billing_cycle === 'monthly') {
+      base.setMonth(base.getMonth() + 1)
+    } else if (l.billing_cycle === 'annual') {
+      base.setFullYear(base.getFullYear() + 1)
+    } else {
+      base.setMonth(base.getMonth() + 1) // default +1 month
+    }
+    setRenewDate(base.toISOString().split('T')[0])
+    setRenewTarget(l)
+  }
+
+  const handleRenew = async () => {
+    if (!renewTarget || !renewDate) return
+    setRenewing(renewTarget.id)
     try {
-      await api.post(`/licences/${l.id}/renew`, { cycle: l.billing_cycle })
+      await api.post(`/licences/${renewTarget.id}/renew`, { cycle: renewTarget.billing_cycle, expiry_date: renewDate })
       loadLicences()
+      setRenewTarget(null)
     } catch {}
     finally { setRenewing(null) }
   }
@@ -530,7 +549,7 @@ export default function LicencesPage() {
                         <Td>
                           <div className="flex items-center justify-end gap-1">
                             {l.expiry_date && l.billing_cycle !== 'perpetual' && (
-                              <button onClick={() => handleRenew(l)} disabled={renewing === l.id}
+                              <button onClick={() => openRenew(l)} disabled={renewing === l.id}
                                 className="p-1.5 text-gray-400 hover:text-brand rounded transition-colors" title="Renew">
                                 <RotateCcw className={cn('w-3.5 h-3.5', renewing === l.id && 'animate-spin')} />
                               </button>
@@ -647,6 +666,34 @@ export default function LicencesPage() {
       )}
 
       {/* Delete confirm */}
+      {/* Renew confirmation modal */}
+      <Modal open={!!renewTarget} onClose={() => setRenewTarget(null)} title="Renew licence" size="sm">
+        {renewTarget && (
+          <div className="space-y-4">
+            <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 space-y-1 text-sm">
+              <p><span className="text-gray-500">Vendor:</span> <span className="font-medium text-gray-900 dark:text-white">{renewTarget.vendor}</span></p>
+              <p><span className="text-gray-500">Licence:</span> <span className="font-medium text-gray-900 dark:text-white">{renewTarget.licence_type}</span></p>
+              <p><span className="text-gray-500">Billing cycle:</span> <span className="font-medium text-gray-900 dark:text-white">{renewTarget.billing_cycle}</span></p>
+              {renewTarget.expiry_date && (
+                <p><span className="text-gray-500">Current expiry:</span> <span className="font-medium text-gray-900 dark:text-white">{renewTarget.expiry_date}</span></p>
+              )}
+            </div>
+            <Input
+              label="New expiry date"
+              type="date"
+              value={renewDate}
+              onChange={e => setRenewDate(e.target.value)}
+            />
+            <div className="flex gap-3">
+              <Button loading={!!renewing} onClick={handleRenew} disabled={!renewDate}>
+                <RotateCcw className="w-4 h-4" />Confirm renewal
+              </Button>
+              <Button variant="secondary" onClick={() => setRenewTarget(null)}>Cancel</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       <Modal open={!!delTarget} onClose={() => setDelTarget(null)} title="Delete" size="sm">
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
           Are you sure you want to delete <strong>{delTarget?.name}</strong>? This cannot be undone.
