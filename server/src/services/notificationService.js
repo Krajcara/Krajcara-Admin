@@ -33,6 +33,14 @@ async function sendEmailNotification(notif) {
   const recipients = db.prepare("SELECT value FROM settings WHERE key='notif_email_recipients'").get()?.value;
   if (!recipients) return;
 
+  // Per-module email control — default: monitors, proxmox, routers, dns enabled; licences, entra disabled
+  const moduleKey = `notif_email_module_${notif.module}`;
+  const moduleEnabled = db.prepare("SELECT value FROM settings WHERE key=?").get(moduleKey)?.value;
+  // If setting not yet saved, use sensible defaults
+  const defaultEnabled = ['monitors', 'proxmox', 'routers', 'dns'].includes(notif.module);
+  if (moduleEnabled === '0') return;
+  if (moduleEnabled === undefined && !defaultEnabled) return;
+
   const typeEmoji = { error: '🔴', warning: '🟡', info: '🔵', success: '🟢' }[notif.type] || '🔵';
   const subject   = `${typeEmoji} [Krajcara Admin] ${notif.title}`;
   const body      = `
@@ -102,14 +110,22 @@ async function sendEmailNotification(notif) {
 // ── Trigger checks (called from scheduler) ───────────────────────────────────
 async function runNotificationChecks() {
   try {
-    checkEntraExpiry();
     checkMonitorsDown();
     await checkRouters();
     await checkDnsServers();
     await checkProxmoxVMs();
-    checkLicenceExpiry();
   } catch (e) {
     console.error('[Notifications] Check error:', e.message);
+  }
+}
+
+// Daily checks — licences and entra (called from scheduler at 03:00)
+async function runDailyNotificationChecks() {
+  try {
+    checkEntraExpiry();
+    checkLicenceExpiry();
+  } catch (e) {
+    console.error('[Notifications] Daily check error:', e.message);
   }
 }
 
@@ -359,4 +375,4 @@ function checkLicenceExpiry() {
   }
 }
 
-module.exports = { createNotification, runNotificationChecks, checkRouters, checkDnsServers, checkProxmoxVMs, checkLicenceExpiry };
+module.exports = { createNotification, runNotificationChecks, runDailyNotificationChecks, checkRouters, checkDnsServers, checkProxmoxVMs, checkLicenceExpiry };
