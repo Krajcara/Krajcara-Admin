@@ -422,3 +422,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_patch_vm ON patch_status(node, vm_id);
   CREATE INDEX IF NOT EXISTS idx_patch_log_vm ON patch_check_log(node, vm_id);
 `);
+
+// Phase 6 update — notifications archive column
+try {
+  db.exec(`ALTER TABLE notifications ADD COLUMN archived INTEGER DEFAULT 0`);
+} catch {}
