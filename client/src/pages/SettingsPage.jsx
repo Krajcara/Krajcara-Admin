@@ -28,6 +28,15 @@ function NotificationSection() {
       .finally(() => setLoading(false))
   }, [])
 
+  const MODULES = [
+    { key: 'monitors', label: 'Monitor down/up',          default: true },
+    { key: 'proxmox',  label: 'Proxmox VM stopped/started', default: true },
+    { key: 'routers',  label: 'Router offline/online',    default: true },
+    { key: 'dns',      label: 'DNS server offline/online', default: true },
+    { key: 'licences', label: 'Licence expiring',         default: false },
+    { key: 'entra',    label: 'Entra ID secret expiring', default: false },
+  ]
+
   const save = async (e) => {
     e.preventDefault(); setSaving(true); setStatus(null)
     try {
@@ -61,6 +70,23 @@ function NotificationSection() {
               value={form.email_recipients || ''} onChange={f('email_recipients')}
               placeholder="admin@company.com, ops@company.com"
               className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand resize-none" />
+          </div>
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Send email for</label>
+            <div className="space-y-2 pl-1">
+              {MODULES.map(m => {
+                const val = form[`module_${m.key}`] !== undefined ? form[`module_${m.key}`] : m.default
+                return (
+                  <label key={m.key} className="flex items-center gap-2.5 cursor-pointer">
+                    <input type="checkbox" checked={!!val}
+                      onChange={e => setForm(p => ({ ...p, [`module_${m.key}`]: e.target.checked }))}
+                      className="w-4 h-4 rounded text-brand" />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">{m.label}</span>
+                    {!m.default && <span className="text-xs text-gray-400">(daily check)</span>}
+                  </label>
+                )
+              })}
+            </div>
           </div>
         </>}
         <Button type="submit" loading={saving}><Save className="w-4 h-4" />Save</Button>
