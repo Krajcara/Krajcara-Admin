@@ -87,21 +87,37 @@ router.delete('/purge-archived', requireRole('superadmin', 'admin'), (req, res) 
 
 // GET /api/notifications/settings
 router.get('/settings', (req, res) => {
-  const get = k => db.prepare("SELECT value FROM settings WHERE key=?").get(k)?.value || '';
+  const get = k => db.prepare("SELECT value FROM settings WHERE key=?").get(k)?.value;
+  const modules = ['monitors','proxmox','routers','dns','licences','entra'];
+  const moduleSettings = {};
+  for (const m of modules) {
+    const val = get(`notif_email_module_${m}`);
+    moduleSettings[`module_${m}`] = val === undefined
+      ? ['monitors','proxmox','routers','dns'].includes(m)  // defaults
+      : val === '1';
+  }
   res.json({
     email_enabled:    get('notif_email_enabled') === '1',
-    email_sender:     get('notif_email_sender'),
-    email_recipients: get('notif_email_recipients'),
+    email_sender:     get('notif_email_sender')  || '',
+    email_recipients: get('notif_email_recipients') || '',
+    ...moduleSettings,
   });
 });
 
 // POST /api/notifications/settings
 router.post('/settings', requireRole('superadmin', 'admin'), (req, res) => {
-  const { email_enabled, email_sender, email_recipients } = req.body;
+  const { email_enabled, email_sender, email_recipients, ...rest } = req.body;
   const set = (k, v) => db.prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES (?,?,datetime('now'))").run(k, v);
   set('notif_email_enabled', email_enabled ? '1' : '0');
-  if (email_sender)                       set('notif_email_sender',     email_sender);
-  if (email_recipients !== undefined)     set('notif_email_recipients', email_recipients);
+  if (email_sender     !== undefined) set('notif_email_sender',     email_sender);
+  if (email_recipients !== undefined) set('notif_email_recipients', email_recipients);
+  // Save per-module settings
+  const modules = ['monitors','proxmox','routers','dns','licences','entra'];
+  for (const m of modules) {
+    if (rest[`module_${m}`] !== undefined) {
+      set(`notif_email_module_${m}`, rest[`module_${m}`] ? '1' : '0');
+    }
+  }
   res.json({ ok: true });
 });
 
