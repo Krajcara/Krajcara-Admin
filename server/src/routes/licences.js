@@ -161,13 +161,22 @@ router.delete('/:id', (req, res) => {
 router.post('/:id/renew', (req, res) => {
   const l = db.prepare('SELECT * FROM licences WHERE id = ?').get(req.params.id);
   if (!l) return res.status(404).json({ error: 'Not found' });
-  const cycle = req.body.cycle || l.billing_cycle || 'annual';
-  const base  = (l.expiry_date && new Date(l.expiry_date) > new Date()) ? new Date(l.expiry_date) : new Date();
-  if (cycle === 'monthly') base.setMonth(base.getMonth() + 1);
-  else base.setFullYear(base.getFullYear() + 1);
-  const newExpiry = base.toISOString().split('T')[0];
+
+  let newExpiry;
+  if (req.body.expiry_date) {
+    // Use explicitly provided date from confirmation modal
+    newExpiry = req.body.expiry_date;
+  } else {
+    // Fallback: auto-calculate from billing cycle
+    const cycle = req.body.cycle || l.billing_cycle || 'annual';
+    const base  = (l.expiry_date && new Date(l.expiry_date) > new Date()) ? new Date(l.expiry_date) : new Date();
+    if (cycle === 'monthly') base.setMonth(base.getMonth() + 1);
+    else base.setFullYear(base.getFullYear() + 1);
+    newExpiry = base.toISOString().split('T')[0];
+  }
+
   db.prepare("UPDATE licences SET expiry_date=?, updated_at=datetime('now') WHERE id=?").run(newExpiry, req.params.id);
-  writeAuditLog({ userId: req.user.id, username: req.user.username, action: 'update', module: 'licences', entityId: req.params.id, entityName: `${l.vendor} — ${l.licence_type} (renewed)`, ip: req.ip, userAgent: req.headers['user-agent'] });
+  writeAuditLog({ userId: req.user.id, username: req.user.username, action: 'update', module: 'licences', entityId: req.params.id, entityName: `${l.vendor} — ${l.licence_type} (renewed to ${newExpiry})`, ip: req.ip, userAgent: req.headers['user-agent'] });
   res.json({ ok: true, expiry_date: newExpiry });
 });
 
