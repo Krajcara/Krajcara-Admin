@@ -317,13 +317,11 @@ router.get('/generate', requireRole('superadmin', 'admin'), async (req, res) => 
       ], i % 2 === 1));
     }
 
-    // ── Footer ───────────────────────────────────────────────────────────────
-    const pageCount = doc.bufferedPageRange().count;
-    for (let i = 0; i < pageCount; i++) {
-      doc.switchToPage(i);
-      doc.fillColor(GRAY).fontSize(8)
-        .text(`${appName} · Infrastructure Report · Page ${i + 1} of ${pageCount}`, 50, doc.page.height - 35, { width: pageW, align: 'center' });
-    }
+    // ── Footer on last page only ──────────────────────────────────────────────
+    const appName2 = appName;
+    doc.fillColor('#6B7280').fontSize(8)
+      .text(`${appName2} · Infrastructure Report · Generated ${new Date().toLocaleString('en')}`,
+        50, doc.page.height - 35, { width: pageW, align: 'center' });
 
     doc.end();
   } catch (err) {
