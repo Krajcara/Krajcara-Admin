@@ -44,13 +44,17 @@ async function gatherReportData(period = 30) {
     const d = Math.ceil((new Date(l.expiry_date) - now) / 86400000);
     return d > 0 && d <= 60;
   });
-  const totalCostAnnual = licences.reduce((a, l) => {
+  const freeLicences   = licences.filter(l => !parseFloat(l.price_per_licence));
+  const paidLicences   = licences.filter(l => parseFloat(l.price_per_licence) > 0);
+  let totalCostAnnual = 0, totalCostMonthly = 0;
+  for (const l of paidLicences) {
     const p = parseFloat(l.price_per_licence) || 0;
     const c = parseInt(l.licence_count) || 1;
-    if (l.billing_cycle === 'monthly') return a + p * c * 12;
-    if (l.billing_cycle === 'annual')  return a + p * c;
-    return a;
-  }, 0);
+    if (l.billing_cycle === 'monthly') { totalCostMonthly += p * c; totalCostAnnual += p * c * 12; }
+    else if (l.billing_cycle === 'annual') { totalCostMonthly += (p * c) / 12; totalCostAnnual += p * c; }
+  }
+  totalCostAnnual  = Math.round(totalCostAnnual  * 100) / 100;
+  totalCostMonthly = Math.round(totalCostMonthly * 100) / 100;
 
   // Entra apps
   const entraApps    = db.prepare("SELECT * FROM entra_apps WHERE hidden=0").all();
@@ -75,21 +79,113 @@ async function gatherReportData(period = 30) {
     notifByModule[n.module] = (notifByModule[n.module] || 0) + 1;
   }
 
-  // Routers
-  const routers = db.prepare('SELECT * FROM routers').all();
-
-  // DNS
+  // Routers & DNS
+  const routers    = db.prepare('SELECT * FROM routers').all();
   const dnsServers = db.prepare('SELECT * FROM dns_local').all();
+
+  // Proxmox
+  let proxmox = null;
+  try {
+    const axios      = require('axios');
+    const https      = require('https');
+    const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+    const url        = db.prepare("SELECT value FROM settings WHERE key='proxmox_url'").get()?.value;
+    const tokenId    = db.prepare("SELECT value FROM settings WHERE key='proxmox_token_id'").get()?.value || '';
+    const user       = db.prepare("SELECT value FROM settings WHERE key='proxmox_user'").get()?.value || 'root@pam';
+    const secret     = db.prepare("SELECT value FROM settings WHERE key='proxmox_api_token'").get()?.value;
+    if (url && secret) {
+      const token   = tokenId ? `${user}!${tokenId}=${secret}` : secret;
+      const headers = { Authorization: `PVEAPIToken=${token}` };
+      const opts    = { headers, httpsAgent, timeout: 10000 };
+      const nodesRes = await axios.get(`${url}/api2/json/nodes`, opts);
+      const details  = await Promise.all((nodesRes.data.data || []).filter(n => n.status === 'online').map(async n => {
+        const [vmsRes, lxcRes] = await Promise.all([
+          axios.get(`${url}/api2/json/nodes/${n.node}/qemu`, opts).catch(() => ({ data: { data: [] } })),
+          axios.get(`${url}/api2/json/nodes/${n.node}/lxc`,  opts).catch(() => ({ data: { data: [] } })),
+        ]);
+        const vms = vmsRes.data.data || [];
+        const lxc = lxcRes.data.data || [];
+        return {
+          node: n.node, status: n.status,
+          cpu_usage:   n.cpu != null ? Math.round(n.cpu * 100) : 0,
+          mem_usage:   n.mem && n.maxmem ? Math.round((n.mem / n.maxmem) * 100) : 0,
+          maxcpu:      n.maxcpu || 0,
+          maxmem_gb:   n.maxmem ? (n.maxmem / 1073741824).toFixed(1) : '0',
+          mem_used_gb: n.mem    ? (n.mem    / 1073741824).toFixed(1) : '0',
+          uptime:      n.uptime,
+          vm_count:    vms.length, lxc_count: lxc.length,
+          vm_running:  vms.filter(v => v.status === 'running').length,
+          lxc_running: lxc.filter(v => v.status === 'running').length,
+        };
+      }));
+      proxmox = { configured: true, nodes: details.sort((a, b) => a.node.localeCompare(b.node)) };
+    }
+  } catch {}
+
+  // M365 mail flow
+  let mailFlow = null;
+  try {
+    const axios = require('axios');
+    const tid   = db.prepare("SELECT value FROM settings WHERE key='m365_tenant_id'").get()?.value;
+    const cid   = db.prepare("SELECT value FROM settings WHERE key='m365_client_id'").get()?.value;
+    const sec   = db.prepare("SELECT value FROM settings WHERE key='m365_client_secret'").get()?.value;
+    if (tid && cid && sec) {
+      const tokenRes = await axios.post(
+        `https://login.microsoftonline.com/${tid}/oauth2/v2.0/token`,
+        new URLSearchParams({ grant_type: 'client_credentials', client_id: cid, client_secret: sec, scope: 'https://graph.microsoft.com/.default' }),
+        { timeout: 15000 }
+      );
+      const token   = tokenRes.data.access_token;
+      const mPeriod = period <= 7 ? 'D7' : period <= 30 ? 'D30' : period <= 90 ? 'D90' : 'D180';
+      const r = await axios.get(
+        `https://graph.microsoft.com/v1.0/reports/getEmailActivityUserDetail(period='${mPeriod}')`,
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 25000, maxRedirects: 5 }
+      );
+      const raw = typeof r.data === 'string' ? r.data : '';
+      if (raw) {
+        const lines = raw.replace(/\uFEFF/, '').trim().split('\n').filter(Boolean);
+        const hdrs  = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+        const rows  = lines.slice(1).map(line => {
+          const vals = []; let cur = '', inQ = false;
+          for (const ch of line) {
+            if (ch === '"') inQ = !inQ;
+            else if (ch === ',' && !inQ) { vals.push(cur.trim()); cur = ''; }
+            else cur += ch;
+          }
+          vals.push(cur.trim());
+          const obj = {};
+          hdrs.forEach((h, i) => obj[h] = (vals[i] || '').replace(/^"|"$/g, ''));
+          return obj;
+        });
+        const domainMap = {};
+        for (const row of rows) {
+          const email  = row['User Principal Name'] || '';
+          if (!email || email.includes('#EXT#')) continue;
+          const domain = email.split('@')[1]?.toLowerCase();
+          if (!domain) continue;
+          if (!domainMap[domain]) domainMap[domain] = { domain, send: 0, receive: 0, read: 0 };
+          domainMap[domain].send    += parseInt(row['Send Count']    || 0) || 0;
+          domainMap[domain].receive += parseInt(row['Receive Count'] || 0) || 0;
+          domainMap[domain].read    += parseInt(row['Read Count']    || 0) || 0;
+        }
+        const domains = Object.values(domainMap).sort((a, b) => (b.send + b.receive) - (a.send + a.receive));
+        const totals  = domains.reduce((a, d) => ({ send: a.send + d.send, receive: a.receive + d.receive, read: a.read + d.read }), { send: 0, receive: 0, read: 0 });
+        mailFlow = { domains, totals };
+      }
+    }
+  } catch {}
 
   return {
     period,
     generated_at: new Date().toISOString(),
-    monitors:     { total: monitors.length, up: monitorsUp, down: monitorsDown, degraded: monitorsDeg, avg_latency_ms: avgLatency, top_latency: topLatency },
+    monitors:     { total: monitors.length, up: monitorsUp, down: monitorsDown, degraded: monitorsDeg, avg_latency_ms: avgLatency, top_latency: topLatency, all: monitors },
     speed:        { tests: speedTests.length, avg_download: avgDownload, avg_upload: avgUpload, avg_ping: avgPing, last: lastSpeed, history: speedTests.slice(0, 30).reverse() },
-    licences:     { total: licences.length, expiring_30: expiring30.length, expiring_60: expiring60, expired: expired.length, annual_cost: Math.round(totalCostAnnual * 100) / 100, list: licences },
+    licences:     { total: licences.length, paid: paidLicences.length, free: freeLicences.length, expiring_30: expiring30.length, expiring_60: expiring60, expired: expired.length, annual_cost: totalCostAnnual, monthly_cost: totalCostMonthly, list: licences, free_list: freeLicences },
     entra:        { total: entraApps.length, expiring_30: entraExpiring.length, list: entraApps },
     notifications:{ total: notifications.length, by_type: notifByType, by_module: notifByModule, recent: notifications.slice(0, 10) },
     network:      { routers: routers.length, dns: dnsServers.length },
+    proxmox,
+    mailFlow,
   };
 }
 
@@ -249,13 +345,26 @@ router.get('/generate', requireRole('superadmin', 'admin'), async (req, res) => 
 
     // ── Licences ─────────────────────────────────────────────────────────────
     doc.addPage();
-    section('LICENCES');
-    row('Total licences',          d.licences.total);
-    row('Expiring in 30 days',     d.licences.expiring_30, d.licences.expiring_30 > 0 ? RED : 'black');
-    row('Expiring in 60 days',     d.licences.expiring_60.length, d.licences.expiring_60.length > 0 ? ORANGE : 'black');
-    row('Expired',                 d.licences.expired, d.licences.expired > 0 ? RED : 'black');
-    row('Total annual cost (est.)', `${d.licences.annual_cost.toLocaleString('en', { minimumFractionDigits: 2 })} EUR`);
-    doc.moveDown(0.5);
+    section('LICENCES & COSTS');
+    row('Total licences',           d.licences.total);
+    row('Paid licences',            d.licences.paid);
+    row('Free licences',            d.licences.free, GREEN);
+    row('Expiring in 30 days',      d.licences.expiring_30, d.licences.expiring_30 > 0 ? RED : 'black');
+    row('Expiring in 60 days',      d.licences.expiring_60.length, d.licences.expiring_60.length > 0 ? ORANGE : 'black');
+    row('Expired',                  d.licences.expired, d.licences.expired > 0 ? RED : 'black');
+    row('Monthly cost (est.)',      `${d.licences.monthly_cost.toLocaleString('en', { minimumFractionDigits: 2 })} EUR`);
+    row('Annual cost (est.)',       `${d.licences.annual_cost.toLocaleString('en', { minimumFractionDigits: 2 })} EUR`);
+    if (d.licences.free_list.length) {
+      doc.moveDown(0.3);
+      doc.fillColor(GRAY).fontSize(9).text('Free licences:', 50, doc.y);
+      doc.moveDown(0.3);
+      d.licences.free_list.forEach(l => {
+        doc.fillColor(GREEN).fontSize(8).text(`  ✓ ${l.vendor} — ${l.licence_type} (${l.licence_count} seats)`, 50, doc.y);
+        doc.moveDown(0.3);
+      });
+      doc.fillColor('black').fontSize(9);
+    }
+    doc.moveDown(0.3);
 
     const lCols2 = [
       { label: 'Vendor',       width: 120 },
@@ -278,6 +387,46 @@ router.get('/generate', requireRole('superadmin', 'admin'), async (req, res) => 
       ], i % 2 === 1);
     });
 
+    // ── Proxmox ──────────────────────────────────────────────────────────────
+    if (d.proxmox?.configured && d.proxmox.nodes.length) {
+      doc.addPage();
+      section('PROXMOX INFRASTRUCTURE');
+      const pCols = [
+        { label: 'Node',      width: 80  },
+        { label: 'Status',    width: 60  },
+        { label: 'CPU cores', width: 70  },
+        { label: 'CPU %',     width: 55  },
+        { label: 'RAM (GB)',  width: 90  },
+        { label: 'RAM %',     width: 55  },
+        { label: 'VMs',       width: 50  },
+        { label: 'LXC',       width: 50  },
+      ];
+      tableHeader(pCols);
+      d.proxmox.nodes.forEach((n, i) => tableRow(pCols, [
+        n.node, n.status,
+        n.maxcpu,
+        `${n.cpu_usage}%`,
+        `${n.mem_used_gb} / ${n.maxmem_gb}`,
+        `${n.mem_usage}%`,
+        `${n.vm_running}/${n.vm_count}`,
+        `${n.lxc_running}/${n.lxc_count}`,
+      ], i % 2 === 1));
+
+      // Totals
+      const totalCPU  = d.proxmox.nodes.reduce((a, n) => a + (n.maxcpu || 0), 0);
+      const totalRAM  = d.proxmox.nodes.reduce((a, n) => a + parseFloat(n.maxmem_gb || 0), 0);
+      const totalVMs  = d.proxmox.nodes.reduce((a, n) => a + n.vm_count, 0);
+      const totalLXC  = d.proxmox.nodes.reduce((a, n) => a + n.lxc_count, 0);
+      const runningVMs  = d.proxmox.nodes.reduce((a, n) => a + n.vm_running, 0);
+      const runningLXC  = d.proxmox.nodes.reduce((a, n) => a + n.lxc_running, 0);
+      doc.moveDown(0.5);
+      row('Total nodes',   d.proxmox.nodes.length);
+      row('Total CPU cores', totalCPU);
+      row('Total RAM',      `${totalRAM.toFixed(1)} GB`);
+      row('Total VMs',      `${runningVMs} running / ${totalVMs} total`);
+      row('Total LXC',      `${runningLXC} running / ${totalLXC} total`);
+    }
+
     // ── Entra ID ─────────────────────────────────────────────────────────────
     doc.addPage();
     section('ENTRA ID APP REGISTRATIONS');
@@ -292,6 +441,29 @@ router.get('/generate', requireRole('superadmin', 'admin'), async (req, res) => 
     ];
     tableHeader(eCols);
     d.entra.list.forEach((a, i) => tableRow(eCols, [a.app_name, a.client_id?.substring(0, 30) || '—', a.secret_expiry || '—'], i % 2 === 1));
+
+    // ── M365 Mail Flow ───────────────────────────────────────────────────────
+    if (d.mailFlow?.domains?.length) {
+      doc.addPage();
+      section('MICROSOFT 365 MAIL FLOW');
+      row('Total sent',     d.mailFlow.totals.send.toLocaleString());
+      row('Total received', d.mailFlow.totals.receive.toLocaleString());
+      row('Total read',     d.mailFlow.totals.read.toLocaleString());
+      doc.moveDown(0.3);
+      const mfCols = [
+        { label: 'Domain',   width: 200 },
+        { label: 'Sent',     width: 100 },
+        { label: 'Received', width: 100 },
+        { label: 'Read',     width: 100 },
+      ];
+      tableHeader(mfCols);
+      d.mailFlow.domains.forEach((dm, i) => tableRow(mfCols, [
+        `@${dm.domain}`,
+        dm.send.toLocaleString(),
+        dm.receive.toLocaleString(),
+        dm.read.toLocaleString(),
+      ], i % 2 === 1));
+    }
 
     // ── Notifications ─────────────────────────────────────────────────────────
     doc.addPage();
