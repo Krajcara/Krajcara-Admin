@@ -4,7 +4,7 @@ import NotificationBell from './NotificationBell'
 import {
   LayoutDashboard, Shield, LogOut, Sun, Moon, Menu, User,
   Users, Settings, BookOpen, KeyRound, RefreshCw, Activity, Network, Globe,
-  Server, Scan, CalendarClock, Wifi, Cloud, HardDrive, ChevronDown, MapPin, Layers, Monitor, Bell
+  Server, Scan, CalendarClock, Wifi, Cloud, HardDrive, ChevronDown, MapPin, Layers, Monitor, Bell, FileText
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useThemeStore } from '../../store/themeStore'
@@ -63,6 +63,7 @@ const NAV_GROUPS = [
       { to: '/users',            label: 'Users',             icon: Users,    roles: ['superadmin', 'admin'] },
       { to: '/audit',            label: 'Audit Log',         icon: BookOpen, roles: ['superadmin', 'admin'] },
       { to: '/notification-log', label: 'Notification Log',  icon: Bell,     roles: ['superadmin', 'admin'] },
+      { to: '/reports',          label: 'Reports',           icon: FileText, roles: ['superadmin', 'admin'] },
       { to: '/settings',         label: 'Settings',          icon: Settings, roles: ['superadmin', 'admin'] },
     ],
   },
