@@ -21,6 +21,7 @@ import ScanAutomationPage from './pages/ScanAutomationPage'
 import IPSpacePage          from './pages/IPSpacePage'
 import PatchManagementPage    from './pages/PatchManagementPage'
 import NotificationLogPage    from './pages/NotificationLogPage'
+import ReportsPage            from './pages/ReportsPage'
 import TVPage               from './pages/TVPage'
 import NetSpeedPage       from './pages/NetSpeedPage'
 import M365Page           from './pages/M365Page'
@@ -61,6 +62,7 @@ export default function App() {
           <Route path="ipspace"      element={<IPSpacePage />} />
           <Route path="patches"         element={<PatchManagementPage />} />
           <Route path="notification-log" element={<NotificationLogPage />} />
+          <Route path="reports"          element={<ReportsPage />} />
           <Route path="netspeed"     element={<NetSpeedPage />} />
           <Route path="m365"         element={<M365Page />} />
           <Route path="backup"       element={<ProtectedRoute roles={['superadmin']}><BackupPage /></ProtectedRoute>} />
