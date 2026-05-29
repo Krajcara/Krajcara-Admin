@@ -44,26 +44,34 @@ async function gatherReportData(period = 30) {
     const d = Math.ceil((new Date(l.expiry_date) - now) / 86400000);
     return d > 0 && d <= 60;
   });
-  const freeLicences   = licences.filter(l => !parseFloat(l.price_per_licence));
-  const paidLicences   = licences.filter(l => parseFloat(l.price_per_licence) > 0);
-  // Group costs by currency
+  const freeLicences   = licences.filter(l => !parseFloat(l.price_per_licence) || l.is_free);
+  const paidLicences   = licences.filter(l => parseFloat(l.price_per_licence) > 0 && !l.is_free);
+  // Group costs by currency — net (no tax) and gross (with tax)
   const costByCurrency = {};
   for (const l of paidLicences) {
-    const p   = parseFloat(l.price_per_licence) || 0;
-    const cnt = parseInt(l.licence_count) || 1;
-    const cur = (l.currency || 'EUR').toUpperCase();
-    if (!costByCurrency[cur]) costByCurrency[cur] = { monthly: 0, annual: 0 };
-    if (l.billing_cycle === 'monthly') { costByCurrency[cur].monthly += p * cnt; costByCurrency[cur].annual += p * cnt * 12; }
-    else if (l.billing_cycle === 'annual') { costByCurrency[cur].monthly += (p * cnt) / 12; costByCurrency[cur].annual += p * cnt; }
+    const p      = parseFloat(l.price_per_licence) || 0;
+    const cnt    = parseInt(l.licence_count) || 1;
+    const cur    = (l.currency || 'EUR').toUpperCase();
+    const tax    = parseFloat(l.tax_percent) || 0;
+    const netM   = l.billing_cycle === 'monthly' ? p * cnt : (p * cnt) / 12;
+    const netA   = l.billing_cycle === 'monthly' ? p * cnt * 12 : p * cnt;
+    const grossM = netM * (1 + tax / 100);
+    const grossA = netA * (1 + tax / 100);
+    if (!costByCurrency[cur]) costByCurrency[cur] = { net_monthly: 0, net_annual: 0, gross_monthly: 0, gross_annual: 0, savings_monthly: 0, savings_annual: 0 };
+    costByCurrency[cur].net_monthly   += netM;
+    costByCurrency[cur].net_annual    += netA;
+    costByCurrency[cur].gross_monthly += grossM;
+    costByCurrency[cur].gross_annual  += grossA;
   }
+  // Add savings from free licences (value of equivalent paid licences — just count them)
+  // Round all values
   for (const cur of Object.keys(costByCurrency)) {
-    costByCurrency[cur].monthly = Math.round(costByCurrency[cur].monthly * 100) / 100;
-    costByCurrency[cur].annual  = Math.round(costByCurrency[cur].annual  * 100) / 100;
+    for (const k of Object.keys(costByCurrency[cur])) {
+      costByCurrency[cur][k] = Math.round(costByCurrency[cur][k] * 100) / 100;
+    }
   }
-  // Legacy single values (first currency or 0)
-  const firstCur = Object.keys(costByCurrency)[0] || 'EUR';
-  const totalCostAnnual  = costByCurrency[firstCur]?.annual  || 0;
-  const totalCostMonthly = costByCurrency[firstCur]?.monthly || 0;
+  const totalCostAnnual  = Object.values(costByCurrency).reduce((a, v) => a + v.net_annual,  0);
+  const totalCostMonthly = Object.values(costByCurrency).reduce((a, v) => a + v.net_monthly, 0);
 
   // Entra apps
   const entraApps    = db.prepare("SELECT * FROM entra_apps WHERE hidden=0").all();
@@ -184,34 +192,38 @@ async function gatherReportData(period = 30) {
     }
   } catch {}
 
-  // DNS External domains check
+  // DNS External domains — from Cloudflare zones
   let dnsExternal = [];
   try {
-    const dnsLib   = require('dns').promises;
-    const domains2 = db.prepare('SELECT domain FROM dns_domains').all().map(r => r.domain);
-    dnsExternal = await Promise.all(domains2.map(async domain => {
-      let spf = false, dkim = false, dmarc = false, mx = false;
-      try {
-        const txts = await dnsLib.resolveTxt(domain);
-        spf  = txts.flat().some(t => t.startsWith('v=spf1'));
-      } catch {}
-      try {
-        const mxRec = await dnsLib.resolveMx(domain);
-        mx = mxRec.length > 0;
-      } catch {}
-      try {
-        const dmarcRec = await dnsLib.resolveTxt(`_dmarc.${domain}`);
-        dmarc = dmarcRec.flat().some(t => t.startsWith('v=DMARC1'));
-      } catch {}
-      for (const sel of ['default','selector1','selector2','google','k1','dkim','mail']) {
+    const dnsLib  = require('dns').promises;
+    const cfToken = db.prepare("SELECT value FROM settings WHERE key='cloudflare_api_token'").get()?.value;
+    const cfZoneId = db.prepare("SELECT value FROM settings WHERE key='cloudflare_zone_id'").get()?.value;
+    if (cfToken) {
+      const axios2 = require('axios');
+      const hdrs   = { Authorization: `Bearer ${cfToken}`, 'Content-Type': 'application/json' };
+      let zones    = [];
+      if (cfZoneId) {
         try {
-          const val = (await dnsLib.resolveTxt(`${sel}._domainkey.${domain}`)).flat().join('');
-          if (val.includes('v=DKIM1')) { dkim = true; break; }
+          const r = await axios2.get(`https://api.cloudflare.com/client/v4/zones/${cfZoneId}`, { headers: hdrs, timeout: 10000 });
+          if (r.data.success) zones = [r.data.result];
         } catch {}
       }
-      const score = [spf,dkim,dmarc,mx].filter(Boolean).length;
-      return { domain, spf, dkim, dmarc, mx, score };
-    }));
+      if (!zones.length) {
+        const r = await axios2.get('https://api.cloudflare.com/client/v4/zones?per_page=50&status=active', { headers: hdrs, timeout: 10000 });
+        if (r.data.success) zones = r.data.result || [];
+      }
+      dnsExternal = await Promise.all(zones.map(async z => {
+        const domain = z.name;
+        let spf = false, dkim = false, dmarc = false, mx = false;
+        try { const txts = await dnsLib.resolveTxt(domain); spf  = txts.flat().some(t => t.startsWith('v=spf1')); } catch {}
+        try { const mxR  = await dnsLib.resolveMx(domain);  mx   = mxR.length > 0; } catch {}
+        try { const dr   = await dnsLib.resolveTxt(`_dmarc.${domain}`); dmarc = dr.flat().some(t => t.startsWith('v=DMARC1')); } catch {}
+        for (const sel of ['default','selector1','selector2','google','k1','dkim','mail']) {
+          try { const val = (await dnsLib.resolveTxt(`${sel}._domainkey.${domain}`)).flat().join(''); if (val.includes('v=DKIM1')) { dkim = true; break; } } catch {}
+        }
+        return { domain, spf, dkim, dmarc, mx, score: [spf,dkim,dmarc,mx].filter(Boolean).length };
+      }));
+    }
   } catch {}
 
   // M365 mail flow monthly trend (last 6 months)
