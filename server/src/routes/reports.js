@@ -184,6 +184,90 @@ async function gatherReportData(period = 30) {
     }
   } catch {}
 
+  // DNS External domains check
+  let dnsExternal = [];
+  try {
+    const dnsLib   = require('dns').promises;
+    const domains2 = db.prepare('SELECT domain FROM dns_domains').all().map(r => r.domain);
+    dnsExternal = await Promise.all(domains2.map(async domain => {
+      let spf = false, dkim = false, dmarc = false, mx = false;
+      try {
+        const txts = await dnsLib.resolveTxt(domain);
+        spf  = txts.flat().some(t => t.startsWith('v=spf1'));
+      } catch {}
+      try {
+        const mxRec = await dnsLib.resolveMx(domain);
+        mx = mxRec.length > 0;
+      } catch {}
+      try {
+        const dmarcRec = await dnsLib.resolveTxt(`_dmarc.${domain}`);
+        dmarc = dmarcRec.flat().some(t => t.startsWith('v=DMARC1'));
+      } catch {}
+      for (const sel of ['default','selector1','selector2','google','k1','dkim','mail']) {
+        try {
+          const val = (await dnsLib.resolveTxt(`${sel}._domainkey.${domain}`)).flat().join('');
+          if (val.includes('v=DKIM1')) { dkim = true; break; }
+        } catch {}
+      }
+      const score = [spf,dkim,dmarc,mx].filter(Boolean).length;
+      return { domain, spf, dkim, dmarc, mx, score };
+    }));
+  } catch {}
+
+  // M365 mail flow monthly trend (last 6 months)
+  let mailFlowMonthly = null;
+  try {
+    if (mailFlow) {
+      const axios2 = require('axios');
+      const tid2   = db.prepare("SELECT value FROM settings WHERE key='m365_tenant_id'").get()?.value;
+      const cid2   = db.prepare("SELECT value FROM settings WHERE key='m365_client_id'").get()?.value;
+      const sec2   = db.prepare("SELECT value FROM settings WHERE key='m365_client_secret'").get()?.value;
+      if (tid2 && cid2 && sec2) {
+        const tr2 = await axios2.post(
+          `https://login.microsoftonline.com/${tid2}/oauth2/v2.0/token`,
+          new URLSearchParams({ grant_type: 'client_credentials', client_id: cid2, client_secret: sec2, scope: 'https://graph.microsoft.com/.default' }),
+          { timeout: 15000 }
+        );
+        const tok2 = tr2.data.access_token;
+        const r2   = await axios2.get(
+          `https://graph.microsoft.com/v1.0/reports/getEmailActivityCounts(period='D180')`,
+          { headers: { Authorization: `Bearer ${tok2}` }, timeout: 20000, maxRedirects: 5 }
+        );
+        const raw2 = typeof r2.data === 'string' ? r2.data : '';
+        if (raw2) {
+          const lines2 = raw2.replace(/^\uFEFF/, '').trim().split('\n').filter(Boolean);
+          const hdrs2  = lines2[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+          const rows2  = lines2.slice(1).map(line => {
+            const vals = []; let cur2 = '', inQ = false;
+            for (const ch of line) { if (ch==='"') inQ=!inQ; else if (ch===','&&!inQ){vals.push(cur2.trim());cur2='';}else cur2+=ch; }
+            vals.push(cur2.trim());
+            const obj = {}; hdrs2.forEach((h,i)=>obj[h]=(vals[i]||'').replace(/^"|"$/g,''));
+            return obj;
+          });
+          const now2 = new Date();
+          const monthMap = {};
+          for (let i=5;i>=0;i--) {
+            const d2=new Date(now2.getFullYear(),now2.getMonth()-i,1);
+            const key=`${d2.getFullYear()}-${String(d2.getMonth()+1).padStart(2,'0')}`;
+            monthMap[key]={ label: d2.toLocaleString('en',{month:'short',year:'numeric'}), send:0, receive:0, read:0 };
+          }
+          for (const row of rows2) {
+            const dateStr = row['Report Date'] || row['Report Refresh Date'] || '';
+            if (!dateStr) continue;
+            const d3=new Date(dateStr);
+            if (isNaN(d3)) continue;
+            const key=`${d3.getFullYear()}-${String(d3.getMonth()+1).padStart(2,'0')}`;
+            if (monthMap[key]) { monthMap[key].send+=parseInt(row['Send']||0)||0; monthMap[key].receive+=parseInt(row['Receive']||0)||0; monthMap[key].read+=parseInt(row['Read']||0)||0; }
+          }
+          const months = Object.values(monthMap);
+          const last2  = months[months.length-1];
+          const prev2  = months[months.length-2];
+          mailFlowMonthly = { months, trend: last2&&prev2 ? last2.send-prev2.send : null };
+        }
+      }
+    }
+  } catch {}
+
   return {
     period,
     generated_at: new Date().toISOString(),
@@ -193,6 +277,8 @@ async function gatherReportData(period = 30) {
     entra:        { total: entraApps.length, expiring_30: entraExpiring.length, list: entraApps },
     notifications:{ total: notifications.length, by_type: notifByType, by_module: notifByModule, recent: notifications.slice(0, 10) },
     network:      { routers: routers.length, dns: dnsServers.length },
+    dnsExternal,
+    mailFlowMonthly,
     proxmox,
     mailFlow,
   };
