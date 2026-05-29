@@ -46,15 +46,24 @@ async function gatherReportData(period = 30) {
   });
   const freeLicences   = licences.filter(l => !parseFloat(l.price_per_licence));
   const paidLicences   = licences.filter(l => parseFloat(l.price_per_licence) > 0);
-  let totalCostAnnual = 0, totalCostMonthly = 0;
+  // Group costs by currency
+  const costByCurrency = {};
   for (const l of paidLicences) {
-    const p = parseFloat(l.price_per_licence) || 0;
-    const c = parseInt(l.licence_count) || 1;
-    if (l.billing_cycle === 'monthly') { totalCostMonthly += p * c; totalCostAnnual += p * c * 12; }
-    else if (l.billing_cycle === 'annual') { totalCostMonthly += (p * c) / 12; totalCostAnnual += p * c; }
+    const p   = parseFloat(l.price_per_licence) || 0;
+    const cnt = parseInt(l.licence_count) || 1;
+    const cur = (l.currency || 'EUR').toUpperCase();
+    if (!costByCurrency[cur]) costByCurrency[cur] = { monthly: 0, annual: 0 };
+    if (l.billing_cycle === 'monthly') { costByCurrency[cur].monthly += p * cnt; costByCurrency[cur].annual += p * cnt * 12; }
+    else if (l.billing_cycle === 'annual') { costByCurrency[cur].monthly += (p * cnt) / 12; costByCurrency[cur].annual += p * cnt; }
   }
-  totalCostAnnual  = Math.round(totalCostAnnual  * 100) / 100;
-  totalCostMonthly = Math.round(totalCostMonthly * 100) / 100;
+  for (const cur of Object.keys(costByCurrency)) {
+    costByCurrency[cur].monthly = Math.round(costByCurrency[cur].monthly * 100) / 100;
+    costByCurrency[cur].annual  = Math.round(costByCurrency[cur].annual  * 100) / 100;
+  }
+  // Legacy single values (first currency or 0)
+  const firstCur = Object.keys(costByCurrency)[0] || 'EUR';
+  const totalCostAnnual  = costByCurrency[firstCur]?.annual  || 0;
+  const totalCostMonthly = costByCurrency[firstCur]?.monthly || 0;
 
   // Entra apps
   const entraApps    = db.prepare("SELECT * FROM entra_apps WHERE hidden=0").all();
@@ -180,7 +189,7 @@ async function gatherReportData(period = 30) {
     generated_at: new Date().toISOString(),
     monitors:     { total: monitors.length, up: monitorsUp, down: monitorsDown, degraded: monitorsDeg, avg_latency_ms: avgLatency, top_latency: topLatency, all: monitors },
     speed:        { tests: speedTests.length, avg_download: avgDownload, avg_upload: avgUpload, avg_ping: avgPing, last: lastSpeed, history: speedTests.slice(0, 30).reverse() },
-    licences:     { total: licences.length, paid: paidLicences.length, free: freeLicences.length, expiring_30: expiring30.length, expiring_60: expiring60, expired: expired.length, annual_cost: totalCostAnnual, monthly_cost: totalCostMonthly, list: licences, free_list: freeLicences },
+    licences:     { total: licences.length, paid: paidLicences.length, free: freeLicences.length, expiring_30: expiring30.length, expiring_60: expiring60, expired: expired.length, annual_cost: totalCostAnnual, monthly_cost: totalCostMonthly, cost_by_currency: costByCurrency, list: licences, free_list: freeLicences },
     entra:        { total: entraApps.length, expiring_30: entraExpiring.length, list: entraApps },
     notifications:{ total: notifications.length, by_type: notifByType, by_module: notifByModule, recent: notifications.slice(0, 10) },
     network:      { routers: routers.length, dns: dnsServers.length },
@@ -352,8 +361,15 @@ router.get('/generate', requireRole('superadmin', 'admin'), async (req, res) => 
     row('Expiring in 30 days',      d.licences.expiring_30, d.licences.expiring_30 > 0 ? RED : 'black');
     row('Expiring in 60 days',      d.licences.expiring_60.length, d.licences.expiring_60.length > 0 ? ORANGE : 'black');
     row('Expired',                  d.licences.expired, d.licences.expired > 0 ? RED : 'black');
-    row('Monthly cost (est.)',      `${d.licences.monthly_cost.toLocaleString('en', { minimumFractionDigits: 2 })} EUR`);
-    row('Annual cost (est.)',       `${d.licences.annual_cost.toLocaleString('en', { minimumFractionDigits: 2 })} EUR`);
+    if (d.licences.cost_by_currency && Object.keys(d.licences.cost_by_currency).length) {
+      for (const [cur, costs] of Object.entries(d.licences.cost_by_currency)) {
+        row(`Monthly cost (${cur})`, `${costs.monthly.toLocaleString('en', { minimumFractionDigits: 2 })} ${cur}`);
+        row(`Annual cost (${cur})`,  `${costs.annual.toLocaleString('en', { minimumFractionDigits: 2 })} ${cur}`);
+      }
+    } else {
+      row('Monthly cost (est.)', '—');
+      row('Annual cost (est.)',  '—');
+    }
     if (d.licences.free_list.length) {
       doc.moveDown(0.3);
       doc.fillColor(GRAY).fontSize(9).text('Free licences:', 50, doc.y);
