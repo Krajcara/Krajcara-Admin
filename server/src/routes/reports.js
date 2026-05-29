@@ -316,17 +316,13 @@ router.get('/generate', requireRole('superadmin', 'admin'), async (req, res) => 
     const doc    = new PDFDocument({ margin: 50, size: 'A4', bufferPages: true });
     const appName = db.prepare("SELECT value FROM settings WHERE key='app_name'").get()?.value || 'Krajcara Admin';
 
-    // Handle stream errors to prevent server crash
-    doc.on('error', (err) => {
-      console.error('[Reports] PDF stream error:', err.message);
-    });
-
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="report-${new Date().toISOString().split('T')[0]}.pdf"`);
 
-    // Pipe only after headers are set
+    // Handle stream errors to prevent server crash
+    res.on('error', () => { try { doc.end(); } catch {} });
+    doc.on('error', (err) => { console.error('[Reports] PDF doc error:', err.message); });
     doc.pipe(res);
-    res.on('close', () => { try { doc.end(); } catch {} });
 
     // ── Colors & helpers ─────────────────────────────────────────────────────
     const BLUE   = '#1A56A0';
@@ -401,7 +397,11 @@ router.get('/generate', requireRole('superadmin', 'admin'), async (req, res) => 
     row('Licences', `${d.licences.total} total, ${d.licences.expiring_30} expiring in 30 days`, d.licences.expiring_30 > 0 ? ORANGE : 'black');
     row('Entra ID Apps', `${d.entra.total} total, ${d.entra.expiring_30} secrets expiring`, d.entra.expiring_30 > 0 ? ORANGE : 'black');
     row('Notifications', `${d.notifications.total} in period (${d.notifications.by_type.error || 0} errors, ${d.notifications.by_type.warning || 0} warnings)`);
-    row('Annual licence cost', `${d.licences.annual_cost.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR`);
+    if (d.licences.cost_by_currency) {
+      for (const [cur, costs] of Object.entries(d.licences.cost_by_currency)) {
+        row(`Annual cost (${cur})`, `${(costs.gross_annual || 0).toLocaleString('en', { minimumFractionDigits: 2 })} ${cur}`);
+      }
+    }
 
     // ── Uptime Monitors ──────────────────────────────────────────────────────
     doc.addPage();
@@ -469,8 +469,9 @@ router.get('/generate', requireRole('superadmin', 'admin'), async (req, res) => 
     row('Expired',                  d.licences.expired, d.licences.expired > 0 ? RED : 'black');
     if (d.licences.cost_by_currency && Object.keys(d.licences.cost_by_currency).length) {
       for (const [cur, costs] of Object.entries(d.licences.cost_by_currency)) {
-        row(`Monthly cost (${cur})`, `${costs.monthly.toLocaleString('en', { minimumFractionDigits: 2 })} ${cur}`);
-        row(`Annual cost (${cur})`,  `${costs.annual.toLocaleString('en', { minimumFractionDigits: 2 })} ${cur}`);
+        row(`Monthly cost net (${cur})`, `${(costs.net_monthly || 0).toLocaleString('en', { minimumFractionDigits: 2 })} ${cur}`);
+        row(`Annual cost net (${cur})`,  `${(costs.net_annual || 0).toLocaleString('en', { minimumFractionDigits: 2 })} ${cur}`);
+        row(`Annual cost incl. tax (${cur})`, `${(costs.gross_annual || 0).toLocaleString('en', { minimumFractionDigits: 2 })} ${cur}`);
       }
     } else {
       row('Monthly cost (est.)', '—');
@@ -621,8 +622,11 @@ router.get('/generate', requireRole('superadmin', 'admin'), async (req, res) => 
     doc.end();
   } catch (err) {
     console.error('[Reports] PDF error:', err.message);
-    try { doc.end(); } catch {}
-    if (!res.headersSent) res.status(500).json({ error: err.message });
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message });
+    } else {
+      try { doc.end(); } catch {}
+    }
   }
 });
 
