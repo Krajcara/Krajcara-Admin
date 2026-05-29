@@ -313,12 +313,20 @@ router.get('/generate', requireRole('superadmin', 'admin'), async (req, res) => 
     const period = Math.min(parseInt(req.query.period) || 30, 365);
     const d      = await gatherReportData(period);
     const PDFDocument = require('pdfkit');
-    const doc    = new PDFDocument({ margin: 50, size: 'A4' });
+    const doc    = new PDFDocument({ margin: 50, size: 'A4', bufferPages: true });
     const appName = db.prepare("SELECT value FROM settings WHERE key='app_name'").get()?.value || 'Krajcara Admin';
+
+    // Handle stream errors to prevent server crash
+    doc.on('error', (err) => {
+      console.error('[Reports] PDF stream error:', err.message);
+    });
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="report-${new Date().toISOString().split('T')[0]}.pdf"`);
+
+    // Pipe only after headers are set
     doc.pipe(res);
+    res.on('close', () => { try { doc.end(); } catch {} });
 
     // ── Colors & helpers ─────────────────────────────────────────────────────
     const BLUE   = '#1A56A0';
@@ -604,14 +612,16 @@ router.get('/generate', requireRole('superadmin', 'admin'), async (req, res) => 
     }
 
     // ── Footer on last page only ──────────────────────────────────────────────
-    const appName2 = appName;
     doc.fillColor('#6B7280').fontSize(8)
-      .text(`${appName2} · Infrastructure Report · Generated ${new Date().toLocaleString('en')}`,
+      .text(`${appName} · Infrastructure Report · Generated ${new Date().toLocaleString('en')}`,
         50, doc.page.height - 35, { width: pageW, align: 'center' });
 
+    // Flush all buffered pages then end
+    doc.flushPages();
     doc.end();
   } catch (err) {
     console.error('[Reports] PDF error:', err.message);
+    try { doc.end(); } catch {}
     if (!res.headersSent) res.status(500).json({ error: err.message });
   }
 });
