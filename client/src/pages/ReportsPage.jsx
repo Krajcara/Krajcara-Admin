@@ -136,8 +136,10 @@ export default function ReportsPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <StatBox label="Avg latency"      value={data.monitors.avg_latency_ms != null ? `${data.monitors.avg_latency_ms} ms` : '—'} color="blue" icon={Activity} />
               <StatBox label="Avg download"     value={data.speed.avg_download != null ? `${data.speed.avg_download} Mbps` : '—'} color="blue" icon={Wifi} sub={`${data.speed.tests} tests`} />
-              <StatBox label="Monthly cost (est.)" value={`${data.licences.monthly_cost?.toLocaleString('en', { minimumFractionDigits: 2 })} EUR`} color="purple" icon={KeyRound} />
-              <StatBox label="Annual cost (est.)"  value={`${data.licences.annual_cost.toLocaleString('en', { minimumFractionDigits: 2 })} EUR`} color="purple" icon={KeyRound} sub={data.licences.free > 0 ? `+ ${data.licences.free} free` : null} />
+              {data.licences.cost_by_currency && Object.entries(data.licences.cost_by_currency).map(([cur, costs]) => (
+                <StatBox key={cur} label={`Annual cost (${cur})`} value={`${costs.annual.toLocaleString('en', { minimumFractionDigits: 2 })} ${cur}`} color="purple" icon={KeyRound} sub={`${costs.monthly.toLocaleString('en', { minimumFractionDigits: 2 })} ${cur}/mo`} />
+              ))}
+              {data.licences.free > 0 && <StatBox label="Free licences" value={data.licences.free} color="green" icon={KeyRound} sub="no cost" />}
               <StatBox label="Notifications"    value={data.notifications.total} color={data.notifications.by_type.error > 0 ? 'red' : 'gray'} icon={Bell} sub={`${data.notifications.by_type.error || 0} errors`} />
             </div>
 
@@ -224,24 +226,6 @@ export default function ReportsPage() {
               </Card>
             )}
 
-            {/* ── Monitor latency chart ── */}
-            {data.monitors.all?.filter(m => m.last_latency_ms).length > 0 && (
-              <Card>
-                <CardHeader><CardTitle>Monitor latency</CardTitle></CardHeader>
-                <CardContent className="pt-0 pb-4">
-                  <ResponsiveContainer width="100%" height={Math.max(160, data.monitors.all.filter(m=>m.last_latency_ms).length * 36)}>
-                    <BarChart data={data.monitors.all.filter(m=>m.last_latency_ms).map(m => ({ name: m.label, ms: m.last_latency_ms }))} layout="vertical" margin={{ top: 4, right: 20, bottom: 0, left: 10 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.06} horizontal={false} />
-                      <XAxis type="number" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} unit=" ms" />
-                      <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={120} />
-                      <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8, border: 'none', background: '#111827', color: '#f9fafb' }} formatter={v => [`${v} ms`, 'Latency']} />
-                      <Bar dataKey="ms" fill="#3b82f6" radius={[0,3,3,0]} maxBarSize={20} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            )}
-
             {/* ── M365 Mail Flow ── */}
             {data.mailFlow?.domains?.length > 0 && (
               <Card>
@@ -311,77 +295,7 @@ export default function ReportsPage() {
               </Card>
             )}
 
-            {/* ── Licences expiring ── */}
-            {data.licences.expiring_60.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle>Licences expiring in 60 days</CardTitle>
-                    <Badge className="bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">{data.licences.expiring_60.length}</Badge>
-                  </div>
-                </CardHeader>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-                        <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase">Vendor</th>
-                        <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase">Licence</th>
-                        <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase">Expiry</th>
-                        <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase">Days left</th>
-                        <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase">Cost/seat</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                      {data.licences.expiring_60
-                        .sort((a, b) => new Date(a.expiry_date) - new Date(b.expiry_date))
-                        .map((l, i) => {
-                          const days = Math.ceil((new Date(l.expiry_date) - new Date()) / 86400000)
-                          return (
-                            <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                              <td className="px-4 py-2.5 font-medium text-gray-900 dark:text-white">{l.vendor}</td>
-                              <td className="px-4 py-2.5 text-gray-600 dark:text-gray-400">{l.licence_type}</td>
-                              <td className="px-4 py-2.5 font-mono text-xs text-gray-500">{l.expiry_date}</td>
-                              <td className="px-4 py-2.5 text-right">
-                                <span className={cn('font-semibold text-xs px-2 py-1 rounded', days <= 7 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : days <= 30 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300')}>
-                                  {days}d
-                                </span>
-                              </td>
-                              <td className="px-4 py-2.5 text-right text-gray-500 text-xs">{l.price_per_licence ? `${l.price_per_licence} ${l.currency || 'EUR'}` : '—'}</td>
-                            </tr>
-                          )
-                        })
-                      }
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-            )}
 
-            {/* ── Recent notifications ── */}
-            {data.notifications.recent.length > 0 && (
-              <Card>
-                <CardHeader><CardTitle>Recent notifications</CardTitle></CardHeader>
-                <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {data.notifications.recent.map((n, i) => {
-                    const Icon = { error: AlertCircle, warning: AlertTriangle, success: CheckCircle, info: Info }[n.type] || Info
-                    const color = { error: 'text-red-500', warning: 'text-yellow-500', success: 'text-green-500', info: 'text-blue-500' }[n.type] || 'text-gray-400'
-                    return (
-                      <div key={i} className="flex items-start gap-3 px-5 py-3">
-                        <Icon className={cn('w-4 h-4 flex-shrink-0 mt-0.5', color)} />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 dark:text-white">{n.title}</p>
-                          {n.message && <p className="text-xs text-gray-500 mt-0.5 truncate">{n.message}</p>}
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <Badge className="text-xs bg-gray-100 text-gray-500 dark:bg-gray-800">{n.module}</Badge>
-                          <span className="text-xs text-gray-400">{timeAgo(n.created_at)}</span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </Card>
-            )}
 
           </div>
         )
