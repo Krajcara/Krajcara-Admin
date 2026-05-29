@@ -309,335 +309,236 @@ router.get('/data', async (req, res) => {
 
 // GET /api/reports/generate?period=30 — PDF download
 router.get('/generate', requireRole('superadmin', 'admin'), async (req, res) => {
+  let doc;
   try {
     const period = Math.min(parseInt(req.query.period) || 30, 365);
     const d      = await gatherReportData(period);
     const PDFDocument = require('pdfkit');
-    const doc    = new PDFDocument({ margin: 50, size: 'A4', bufferPages: true });
+    doc = new PDFDocument({ margin: 0, size: 'A4', bufferPages: true, autoFirstPage: false });
     const appName = db.prepare("SELECT value FROM settings WHERE key='app_name'").get()?.value || 'Krajcara Admin';
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="report-${new Date().toISOString().split('T')[0]}.pdf"`);
     res.on('error', () => { try { doc.end(); } catch {} });
-    doc.on('error', (err) => { console.error('[Reports] PDF doc error:', err.message); });
+    doc.on('error', (err) => { console.error('[PDF]', err.message); });
     doc.pipe(res);
 
-    const W = doc.page.width, H = doc.page.height, M = 50, PW = W - M * 2;
+    const W = 595.28, H = 841.89, M = 40, PW = W - M * 2;
     const C = {
-      primary: '#1E40AF', accent: '#3B82F6', green: '#16A34A',
-      red: '#DC2626', orange: '#EA580C',
-      gray1: '#111827', gray2: '#374151', gray3: '#6B7280',
-      gray4: '#9CA3AF', gray5: '#E5E7EB', gray6: '#F3F4F6',
-      white: '#FFFFFF', dark: '#0F172A',
+      dark: '#0F172A', dark2: '#1E293B', primary: '#1E40AF', accent: '#3B82F6',
+      green: '#16A34A', red: '#DC2626', orange: '#EA580C', purple: '#7C3AED',
+      w: '#FFFFFF', g1: '#111827', g2: '#374151', g3: '#6B7280', g4: '#9CA3AF', g5: '#E5E7EB', g6: '#F1F5F9',
     };
 
-    const safe = (v, f = '—') => (v != null && v !== '') ? String(v) : f;
-    const fmtN = (n, dec = 2) => (n != null && !isNaN(n)) ? Number(n).toLocaleString('en', { minimumFractionDigits: dec, maximumFractionDigits: dec }) : '—';
-    const fmtI = (n) => (n != null && !isNaN(n)) ? Number(n).toLocaleString('en') : '—';
+    const safe = (v, f='—') => (v != null && v !== '') ? String(v) : f;
+    const fmtN = (n, dec=2) => n != null && !isNaN(n) ? Number(n).toLocaleString('en',{minimumFractionDigits:dec,maximumFractionDigits:dec}) : '—';
+    const fmtI = (n) => n != null && !isNaN(n) ? Number(n).toLocaleString('en') : '—';
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-    const sectionTitle = (title) => {
-      doc.moveDown(0.8);
-      const y = doc.y;
-      doc.rect(M, y, 3, 16).fill(C.accent);
-      doc.fillColor(C.gray1).fontSize(11).font('Helvetica-Bold').text(title, M + 10, y + 1);
-      doc.rect(M, y + 18, PW, 0.5).fill(C.gray5);
-      doc.y = y + 26;
-      doc.font('Helvetica').fontSize(9).fillColor(C.gray2);
+    // ── Draw page background ──────────────────────────────────────────────
+    const pageBg = () => {
+      doc.rect(0, 0, W, H).fill(C.dark);
+      // subtle gradient circles
+      doc.save().fillColor('#1E3A5F').opacity(0.2).circle(W+60, 100, 220).fill().restore();
+      doc.save().fillColor('#1E3A5F').opacity(0.15).circle(-40, H-60, 180).fill().restore();
+      // top accent bar
+      doc.rect(0, 0, W, 5).fill(C.primary);
     };
 
-    // Stat box: (x, y, w, h, value, label, color)
-    const statBox = (x, y, w, h, val, label, color = C.accent) => {
-      doc.rect(x, y, w, h).fill(C.gray6);
+    // ── Section title ─────────────────────────────────────────────────────
+    let curY = 0;
+    const sec = (title) => {
+      curY += 18;
+      doc.rect(M, curY, 3, 14).fill(C.accent);
+      doc.fillColor(C.accent).fontSize(9).font('Helvetica-Bold').text(title.toUpperCase(), M+8, curY+2);
+      doc.rect(M, curY+15, PW, 0.4).fill('#1E3A5F');
+      curY += 22;
+    };
+
+    // ── Stat box ──────────────────────────────────────────────────────────
+    const stat = (x, y, w, h, val, label, color=C.accent) => {
+      doc.rect(x, y, w, h).fill(C.dark2);
       doc.rect(x, y, w, 3).fill(color);
-      doc.fillColor(color).fontSize(16).font('Helvetica-Bold')
-        .text(safe(val), x, y + 12, { width: w, align: 'center' });
-      doc.fillColor(C.gray4).fontSize(7).font('Helvetica')
-        .text(label.toUpperCase(), x, y + 32, { width: w, align: 'center' });
+      doc.fillColor(color).fontSize(15).font('Helvetica-Bold').text(safe(val), x, y+10, {width:w, align:'center'});
+      doc.fillColor(C.g4).fontSize(6.5).font('Helvetica').text(label.toUpperCase(), x, y+28, {width:w, align:'center'});
     };
 
-    const kv = (label, value, color = null, bold = false) => {
-      const y = doc.y;
-      doc.fillColor(C.gray4).fontSize(8.5).font('Helvetica').text(label, M, y, { width: 190 });
-      doc.fillColor(color || C.gray1).fontSize(8.5).font(bold ? 'Helvetica-Bold' : 'Helvetica')
-        .text(safe(value), M + 200, y, { width: PW - 200 });
-      doc.font('Helvetica').fillColor(C.gray1);
-      doc.y = y + 13;
-    };
-
-    const tHead = (cols) => {
-      const y = doc.y;
-      doc.rect(M, y, PW, 16).fill(C.primary);
+    // ── Table header ──────────────────────────────────────────────────────
+    const th = (cols) => {
+      doc.rect(M, curY, PW, 14).fill(C.primary);
       let x = M;
       cols.forEach(col => {
-        doc.fillColor(C.white).fontSize(7).font('Helvetica-Bold')
-          .text(col.label.toUpperCase(), x + 4, y + 4, { width: col.w - 6, ellipsis: true });
+        doc.fillColor(C.w).fontSize(6.5).font('Helvetica-Bold').text(col.l.toUpperCase(), x+3, curY+4, {width:col.w-4, ellipsis:true});
         x += col.w;
       });
-      doc.y = y + 16;
+      curY += 14;
     };
 
-    const tRow = (cols, vals, alt = false, clrs = {}) => {
-      const rh = 14;
-      const y  = doc.y;
-      if (alt) doc.rect(M, y, PW, rh).fill('#EEF2FF');
-      doc.rect(M, y + rh - 0.5, PW, 0.5).fill(C.gray5);
+    // ── Table row ─────────────────────────────────────────────────────────
+    const tr = (cols, vals, alt=false, clrs={}) => {
+      const rh = 13;
+      if (alt) doc.rect(M, curY, PW, rh).fill('#1A2744');
+      doc.rect(M, curY+rh-0.4, PW, 0.4).fill('#1E3A5F');
       let x = M;
       cols.forEach((col, i) => {
-        doc.fillColor(clrs[i] || C.gray2).fontSize(7.5)
-          .font(clrs[i] ? 'Helvetica-Bold' : 'Helvetica')
-          .text(safe(vals[i]), x + 4, y + 3, { width: col.w - 8, ellipsis: true });
+        doc.fillColor(clrs[i]||C.g3).fontSize(7).font(clrs[i]?'Helvetica-Bold':'Helvetica')
+          .text(safe(vals[i]), x+3, curY+3, {width:col.w-5, ellipsis:true});
         x += col.w;
       });
-      doc.fillColor(C.gray1).font('Helvetica');
-      doc.y = y + rh;
+      doc.fillColor(C.g2).font('Helvetica');
+      curY += rh;
+    };
+
+    const kv = (label, val, color=null) => {
+      doc.fillColor(C.g4).fontSize(7.5).font('Helvetica').text(label, M, curY, {width:180});
+      doc.fillColor(color||C.w).fontSize(7.5).font('Helvetica-Bold').text(safe(val), M+190, curY, {width:PW-190});
+      curY += 12;
     };
 
     // ════════════════════════════════════════════════════════════════════════
-    // COVER PAGE
+    // PAGE 1 — COVER
     // ════════════════════════════════════════════════════════════════════════
-    doc.rect(0, 0, W, H).fill(C.dark);
-    doc.rect(0, 0, W, 6).fill(C.primary);
-    // Decorative circles
-    doc.save().fillColor('#1E3A5F').opacity(0.35).circle(W + 40, 60, 190).fill().restore();
-    doc.save().fillColor('#1E3A5F').opacity(0.25).circle(-40, H - 80, 160).fill().restore();
+    doc.addPage({size:'A4', margin:0});
+    pageBg();
 
-    // Logo box
-    doc.rect(M, 100, 52, 52).fill(C.primary);
-    doc.fillColor(C.white).fontSize(26).font('Helvetica-Bold').text('K', M, 114, { width: 52, align: 'center' });
+    // Logo
+    doc.rect(M, 80, 48, 48).fill(C.primary);
+    doc.fillColor(C.w).fontSize(24).font('Helvetica-Bold').text('K', M, 94, {width:48, align:'center'});
 
     // Title
-    doc.fillColor(C.white).fontSize(28).font('Helvetica-Bold').text(appName, M + 62, 108);
-    doc.fillColor(C.accent).fontSize(13).font('Helvetica').text('Infrastructure Report', M + 62, 142);
+    doc.fillColor(C.w).fontSize(26).font('Helvetica-Bold').text(appName, M+58, 84);
+    doc.fillColor(C.accent).fontSize(12).font('Helvetica').text('Infrastructure Report', M+58, 116);
+    doc.rect(M, 150, PW, 0.6).fill('#1D4ED8');
 
-    // Divider
-    doc.rect(M, 175, PW, 1).fill('#1D4ED8');
+    // Period pill
+    doc.rect(M, 162, 100, 20).fill(C.primary);
+    doc.fillColor(C.w).fontSize(8.5).font('Helvetica-Bold').text(`Last ${period} days`, M, 168, {width:100, align:'center'});
+    doc.fillColor(C.g4).fontSize(8).font('Helvetica')
+      .text(`Generated: ${new Date().toLocaleString('en')}`, M+110, 164)
+      .text(`${new Date(Date.now()-period*86400000).toLocaleDateString('en')} — ${new Date().toLocaleDateString('en')}`, M+110, 176);
 
-    // Meta info
-    doc.rect(M, 192, 110, 24).fill('#1D4ED8');
-    doc.fillColor(C.white).fontSize(9).font('Helvetica-Bold').text(`Last ${period} days`, M + 6, 200);
-    doc.fillColor(C.gray4).fontSize(8.5).font('Helvetica')
-      .text(`Generated: ${new Date().toLocaleString('en')}`, M, 226)
-      .text(`Period: ${new Date(Date.now() - period*86400000).toLocaleDateString('en')} — ${new Date().toLocaleDateString('en')}`, M, 240);
+    // Row 1 — Monitors + Speed
+    const r1y = 210, bw = (PW-12)/4;
+    [[`${d.monitors.up}/${d.monitors.total}`,'Monitors Up',C.green],
+     [d.monitors.down>0?d.monitors.down:'0','Monitors Down',d.monitors.down>0?C.red:C.g4],
+     [d.speed.avg_download!=null?`${d.speed.avg_download}M`:'—','Avg Download',C.accent],
+     [d.speed.avg_upload!=null?`${d.speed.avg_upload}M`:'—','Avg Upload',C.green],
+    ].forEach(([v,l,c],i) => stat(M+i*(bw+4), r1y, bw, 52, v, l, c));
 
-    // Summary stat boxes on cover
-    const coverStats = [
-      { val: `${d.monitors.up}/${d.monitors.total}`, label: 'Monitors Up',  color: C.green  },
-      { val: d.monitors.down > 0 ? d.monitors.down : 'None', label: 'Monitors Down', color: d.monitors.down > 0 ? C.red : C.gray4 },
-      { val: d.licences.total, label: 'Licences',    color: C.accent },
-      { val: d.entra.total,    label: 'Entra Apps',  color: C.accent },
-    ];
-    const bw = PW / 4;
-    coverStats.forEach((s, i) => {
-      const bx = M + i * bw;
-      doc.rect(bx + 4, 286, bw - 8, 64).fill('#1E293B');
-      doc.rect(bx + 4, 286, bw - 8, 3).fill(s.color);
-      doc.fillColor(s.color).fontSize(20).font('Helvetica-Bold')
-        .text(safe(s.val), bx + 4, 298, { width: bw - 8, align: 'center' });
-      doc.fillColor(C.gray4).fontSize(7.5).font('Helvetica')
-        .text(s.label.toUpperCase(), bx + 4, 322, { width: bw - 8, align: 'center' });
-    });
+    // Row 2 — Licences + Entra + Ping
+    const r2y = 274;
+    [[d.licences.total,'Total Licences',C.accent],
+     [d.licences.paid,'Paid',C.primary],
+     [d.licences.free,'Free',C.green],
+     [d.entra.total,'Entra Apps',C.purple],
+    ].forEach(([v,l,c],i) => stat(M+i*(bw+4), r2y, bw, 52, v, l, c));
 
-    // Speed summary on cover
-    if (d.speed.tests > 0) {
-      const sp2 = [
-        { val: d.speed.avg_download != null ? `${d.speed.avg_download} Mbps` : '—', label: 'Avg Download', color: C.accent },
-        { val: d.speed.avg_upload   != null ? `${d.speed.avg_upload} Mbps`   : '—', label: 'Avg Upload',   color: C.green },
-        { val: d.speed.avg_ping     != null ? `${d.speed.avg_ping} ms`        : '—', label: 'Avg Ping',     color: '#7C3AED' },
-        { val: d.speed.tests, label: 'Speed Tests', color: C.gray4 },
-      ];
-      sp2.forEach((s, i) => {
-        const bx = M + i * bw;
-        doc.rect(bx + 4, 366, bw - 8, 64).fill('#1E293B');
-        doc.rect(bx + 4, 366, bw - 8, 3).fill(s.color);
-        doc.fillColor(s.color).fontSize(16).font('Helvetica-Bold')
-          .text(safe(s.val), bx + 4, 378, { width: bw - 8, align: 'center' });
-        doc.fillColor(C.gray4).fontSize(7.5).font('Helvetica')
-          .text(s.label.toUpperCase(), bx + 4, 400, { width: bw - 8, align: 'center' });
+    // Costs table
+    curY = 344;
+    if (d.licences.cost_by_currency && Object.keys(d.licences.cost_by_currency).length) {
+      doc.fillColor(C.g4).fontSize(7).font('Helvetica-Bold').text('LICENCE COSTS', M, curY); curY += 12;
+      const ccols = [{l:'Currency',w:65},{l:'Monthly net',w:100},{l:'Annual net',w:100},{l:'Annual incl.tax',w:100}];
+      th(ccols);
+      Object.entries(d.licences.cost_by_currency).forEach(([cur,costs],i) => {
+        tr(ccols,[cur,`${fmtN(costs.net_monthly)} ${cur}`,`${fmtN(costs.net_annual)} ${cur}`,`${fmtN(costs.gross_annual)} ${cur}`],i%2===1,{3:C.accent});
       });
     }
 
-    // Costs summary on cover
-    if (d.licences.cost_by_currency && Object.keys(d.licences.cost_by_currency).length) {
-      let cy = 450;
-      doc.fillColor(C.gray4).fontSize(8).font('Helvetica-Bold').text('LICENCE COSTS (ANNUAL INCL. TAX)', M, cy); cy += 14;
-      Object.entries(d.licences.cost_by_currency).forEach(([cur, costs]) => {
-        doc.fillColor(C.accent).fontSize(9).font('Helvetica-Bold').text(cur, M, cy, { width: 50 });
-        doc.fillColor(C.white).fontSize(9).font('Helvetica').text(`${fmtN(costs.gross_annual)} ${cur}  /year  ·  ${fmtN(costs.gross_monthly)} ${cur}/mo`, M + 55, cy);
-        cy += 14;
+    // Proxmox summary on cover
+    if (d.proxmox?.configured && d.proxmox.nodes.length) {
+      curY += 10;
+      const totalCPU = d.proxmox.nodes.reduce((a,n)=>a+n.maxcpu,0);
+      const totalRAM = d.proxmox.nodes.reduce((a,n)=>a+parseFloat(n.maxmem_gb||0),0);
+      const rVMs = d.proxmox.nodes.reduce((a,n)=>a+n.vm_running,0);
+      const tVMs = d.proxmox.nodes.reduce((a,n)=>a+n.vm_count,0);
+      const rLXC = d.proxmox.nodes.reduce((a,n)=>a+n.lxc_running,0);
+      const tLXC = d.proxmox.nodes.reduce((a,n)=>a+n.lxc_count,0);
+      doc.fillColor(C.g4).fontSize(7).font('Helvetica-Bold').text('PROXMOX INFRASTRUCTURE', M, curY); curY += 12;
+      const pcols = [{l:'Node',w:80},{l:'Status',w:65},{l:'Cores',w:55},{l:'CPU%',w:50},{l:'RAM GB',w:90},{l:'RAM%',w:50},{l:'VMs',w:50},{l:'LXC',w:45}];
+      th(pcols);
+      d.proxmox.nodes.forEach((n,i) => {
+        tr(pcols,[n.node,n.status,n.maxcpu,`${n.cpu_usage}%`,`${n.mem_used_gb}/${n.maxmem_gb}`,`${n.mem_usage}%`,`${n.vm_running}/${n.vm_count}`,`${n.lxc_running}/${n.lxc_count}`],i%2===1,{
+          1:n.status==='online'?C.green:C.red,
+          3:n.cpu_usage>80?C.red:n.cpu_usage>60?C.orange:C.w,
+          5:n.mem_usage>80?C.red:n.mem_usage>60?C.orange:C.w,
+        });
       });
+      curY += 4;
+      doc.fillColor(C.g4).fontSize(7).font('Helvetica')
+        .text(`Totals: ${d.proxmox.nodes.length} nodes · ${totalCPU} cores · ${totalRAM.toFixed(0)} GB RAM · ${rVMs+rLXC}/${tVMs+tLXC} running`, M, curY);
     }
 
     // Cover footer
-    doc.rect(0, H - 36, W, 36).fill('#0A0F1E');
-    doc.fillColor(C.gray4).fontSize(7.5).font('Helvetica')
-      .text('CONFIDENTIAL — IT INFRASTRUCTURE REPORT', M, H - 22, { width: PW, align: 'center' });
+    doc.rect(0, H-30, W, 30).fill('#050D1A');
+    doc.fillColor(C.g4).fontSize(7).font('Helvetica')
+      .text('CONFIDENTIAL — IT INFRASTRUCTURE REPORT', M, H-18, {width:PW, align:'center'});
 
     // ════════════════════════════════════════════════════════════════════════
-    // REPORT PAGE — everything on one page
+    // PAGE 2 — EMAIL + DNS + ENTRA
     // ════════════════════════════════════════════════════════════════════════
-    doc.addPage();
-    // Top accent
-    doc.rect(0, 0, W, 6).fill(C.primary);
-    doc.rect(0, 6, W, 30).fill(C.gray6);
-    doc.fillColor(C.gray3).fontSize(7.5).font('Helvetica')
-      .text(appName.toUpperCase(), M, 17, { width: PW * 0.6 });
-    doc.fillColor(C.gray3).text(`Generated ${new Date().toLocaleString('en')}`, M, 17, { width: PW, align: 'right' });
-    doc.y = 50;
+    doc.addPage({size:'A4', margin:0});
+    pageBg();
+    curY = 20;
 
-    // ── 1. UPTIME MONITORS ────────────────────────────────────────────────
-    sectionTitle('Uptime Monitors');
-    const msw = (PW - 9) / 4;
-    const msy = doc.y;
-    statBox(M,            msy, msw-3, 44, d.monitors.up,       'Up',        C.green);
-    statBox(M+msw,        msy, msw-3, 44, d.monitors.down,     'Down',      d.monitors.down > 0 ? C.red : C.gray4);
-    statBox(M+msw*2,      msy, msw-3, 44, d.monitors.degraded, 'Degraded',  d.monitors.degraded > 0 ? C.orange : C.gray4);
-    statBox(M+msw*3,      msy, msw-3, 44, d.monitors.avg_latency_ms != null ? `${d.monitors.avg_latency_ms}ms` : '—', 'Avg Latency', C.accent);
-    doc.y = msy + 52;
-
-    // ── 2. INTERNET SPEED ─────────────────────────────────────────────────
-    sectionTitle('Internet Speed');
-    if (d.speed.tests > 0) {
-      const ssw = (PW - 9) / 4;
-      const ssy = doc.y;
-      statBox(M,       ssy, ssw-3, 44, d.speed.avg_download != null ? `${d.speed.avg_download} Mbps` : '—', 'Avg Download', C.accent);
-      statBox(M+ssw,   ssy, ssw-3, 44, d.speed.avg_upload   != null ? `${d.speed.avg_upload} Mbps`   : '—', 'Avg Upload',   C.green);
-      statBox(M+ssw*2, ssy, ssw-3, 44, d.speed.avg_ping     != null ? `${d.speed.avg_ping} ms`        : '—', 'Avg Ping',     '#7C3AED');
-      statBox(M+ssw*3, ssy, ssw-3, 44, d.speed.tests, 'Tests', C.gray4);
-      doc.y = ssy + 52;
-    } else {
-      doc.fillColor(C.gray4).fontSize(8).text('No speed tests in period', M, doc.y); doc.moveDown(0.5);
-    }
-
-    // ── 3. LICENCES & COSTS ───────────────────────────────────────────────
-    sectionTitle('Licences & Costs');
-    const lsw = (PW - 6) / 3;
-    const lsy = doc.y;
-    statBox(M,       lsy, lsw-3, 44, d.licences.total, 'Total',  C.accent);
-    statBox(M+lsw,   lsy, lsw-3, 44, d.licences.paid,  'Paid',   C.primary);
-    statBox(M+lsw*2, lsy, lsw-3, 44, d.licences.free,  'Free',   C.green);
-    doc.y = lsy + 52;
-    if (d.licences.cost_by_currency && Object.keys(d.licences.cost_by_currency).length) {
-      doc.moveDown(0.2);
-      const ccols = [
-        { label: 'Currency',          w: 70  },
-        { label: 'Monthly (net)',      w: 110 },
-        { label: 'Annual (net)',       w: 110 },
-        { label: 'Annual (incl.tax)', w: 125 },
-      ];
-      tHead(ccols);
-      Object.entries(d.licences.cost_by_currency).forEach(([cur, costs], i) => {
-        tRow(ccols, [cur, `${fmtN(costs.net_monthly)} ${cur}`, `${fmtN(costs.net_annual)} ${cur}`, `${fmtN(costs.gross_annual)} ${cur}`], i%2===1, { 3: C.primary });
-      });
-    }
-    if (d.licences.expiring_30 > 0) { doc.moveDown(0.3); kv('Expiring in 30 days', d.licences.expiring_30, C.red, true); }
-    if (d.licences.expired > 0)     { kv('Expired', d.licences.expired, C.red, true); }
-
-    // ── 4. EMAIL ACTIVITY ─────────────────────────────────────────────────
+    // Email Activity
     if (d.mailFlowMonthly?.months?.length) {
-      sectionTitle('Email Activity — M365');
-      const emCols = [
-        { label: 'Month',    w: 90  },
-        { label: 'Sent',     w: 80  },
-        { label: 'Received', w: 90  },
-        { label: 'Read',     w: 80  },
-        { label: 'Total',    w: 75  },
-      ];
-      tHead(emCols);
-      d.mailFlowMonthly.months.forEach((m, i) => {
-        tRow(emCols, [m.label, fmtI(m.send), fmtI(m.receive), fmtI(m.read), fmtI(m.send+m.receive)], i%2===1, { 1: C.accent, 2: C.green, 3: '#7C3AED' });
+      sec('Email Activity — M365');
+      const emCols = [{l:'Month',w:85},{l:'Sent',w:75},{l:'Received',w:85},{l:'Read',w:75},{l:'Total',w:70}];
+      th(emCols);
+      d.mailFlowMonthly.months.forEach((m,i) => {
+        tr(emCols,[m.label,fmtI(m.send),fmtI(m.receive),fmtI(m.read),fmtI(m.send+m.receive)],i%2===1,{1:C.accent,2:C.green,3:C.purple});
       });
-      if (d.mailFlowMonthly.trend != null) {
-        doc.moveDown(0.2);
-        const tc = d.mailFlowMonthly.trend < 0 ? C.red : C.green;
-        const ts = d.mailFlowMonthly.trend > 0 ? '+' : '';
-        kv('Trend vs prev month', `${ts}${fmtI(d.mailFlowMonthly.trend)} sent`, tc, true);
+      if (d.mailFlowMonthly.trend!=null) {
+        curY += 4;
+        const tc = d.mailFlowMonthly.trend<0?C.red:C.green;
+        const ts = d.mailFlowMonthly.trend>0?'+':'';
+        kv('Trend vs prev month', `${ts}${fmtI(d.mailFlowMonthly.trend)} sent`, tc);
       }
       if (d.mailFlow?.domains?.length) {
-        doc.moveDown(0.3);
-        doc.fillColor(C.gray3).fontSize(7.5).font('Helvetica-Bold').text('BY DOMAIN', M, doc.y); doc.moveDown(0.2);
-        const dmCols = [{ label: 'Domain', w: 155 }, { label: 'Sent', w: 80 }, { label: 'Received', w: 90 }, { label: 'Read', w: 90 }];
-        tHead(dmCols);
-        d.mailFlow.domains.forEach((dm, i) => {
-          tRow(dmCols, [`@${dm.domain}`, fmtI(dm.send), fmtI(dm.receive), fmtI(dm.read)], i%2===1, { 1: C.accent, 2: C.green, 3: '#7C3AED' });
+        curY += 6;
+        doc.fillColor(C.g4).fontSize(7).font('Helvetica-Bold').text('BY DOMAIN', M, curY); curY += 10;
+        const dmCols = [{l:'Domain',w:155},{l:'Sent',w:80},{l:'Received',w:90},{l:'Read',w:90}];
+        th(dmCols);
+        d.mailFlow.domains.forEach((dm,i) => {
+          tr(dmCols,[`@${dm.domain}`,fmtI(dm.send),fmtI(dm.receive),fmtI(dm.read)],i%2===1,{1:C.accent,2:C.green,3:C.purple});
         });
       }
     }
 
-    // ── 5. DNS EXTERNAL ───────────────────────────────────────────────────
+    // DNS External
     if (d.dnsExternal?.length) {
-      sectionTitle('DNS — External Domain Security');
-      const dnsCols = [
-        { label: 'Domain', w: 160 }, { label: 'SPF', w: 55 }, { label: 'DKIM', w: 55 },
-        { label: 'DMARC', w: 55 },  { label: 'MX', w: 55 },  { label: 'Score', w: 55 },
-      ];
-      tHead(dnsCols);
-      d.dnsExternal.forEach((dm, i) => {
-        const sc = dm.score===4 ? C.green : dm.score>=2 ? C.orange : C.red;
-        const ck = v => v ? '✓' : '✗';
-        tRow(dnsCols, [dm.domain, ck(dm.spf), ck(dm.dkim), ck(dm.dmarc), ck(dm.mx), `${dm.score}/4`], i%2===1, {
-          1: dm.spf?C.green:C.red, 2: dm.dkim?C.green:C.red, 3: dm.dmarc?C.green:C.red, 4: dm.mx?C.green:C.red, 5: sc,
+      sec('DNS — External Domain Security');
+      const dnsCols = [{l:'Domain',w:155},{l:'SPF',w:50},{l:'DKIM',w:50},{l:'DMARC',w:55},{l:'MX',w:50},{l:'Score',w:55}];
+      th(dnsCols);
+      d.dnsExternal.forEach((dm,i) => {
+        const sc = dm.score===4?C.green:dm.score>=2?C.orange:C.red;
+        const ck = v => v?'✓':'✗';
+        tr(dnsCols,[dm.domain,ck(dm.spf),ck(dm.dkim),ck(dm.dmarc),ck(dm.mx),`${dm.score}/4`],i%2===1,{
+          1:dm.spf?C.green:C.red,2:dm.dkim?C.green:C.red,3:dm.dmarc?C.green:C.red,4:dm.mx?C.green:C.red,5:sc,
         });
       });
     }
 
-    // ── 6. PROXMOX ────────────────────────────────────────────────────────
-    if (d.proxmox?.configured && d.proxmox.nodes.length) {
-      sectionTitle('Proxmox Infrastructure');
-      const totalCPU = d.proxmox.nodes.reduce((a,n) => a+n.maxcpu, 0);
-      const totalRAM = d.proxmox.nodes.reduce((a,n) => a+parseFloat(n.maxmem_gb||0), 0);
-      const rVMs     = d.proxmox.nodes.reduce((a,n) => a+n.vm_running, 0);
-      const rLXC     = d.proxmox.nodes.reduce((a,n) => a+n.lxc_running, 0);
-      const tVMs     = d.proxmox.nodes.reduce((a,n) => a+n.vm_count, 0);
-      const tLXC     = d.proxmox.nodes.reduce((a,n) => a+n.lxc_count, 0);
-
-      const psw = (PW-9)/4;
-      const psy = doc.y;
-      statBox(M,       psy, psw-3, 44, d.proxmox.nodes.length,    'Nodes',      C.accent);
-      statBox(M+psw,   psy, psw-3, 44, totalCPU,                  'Total cores', C.primary);
-      statBox(M+psw*2, psy, psw-3, 44, `${totalRAM.toFixed(0)}GB`,'Total RAM',  C.primary);
-      statBox(M+psw*3, psy, psw-3, 44, `${rVMs+rLXC}/${tVMs+tLXC}`, 'Running', C.green);
-      doc.y = psy + 52;
-
-      doc.moveDown(0.2);
-      const pCols = [
-        { label: 'Node', w: 80 }, { label: 'Status', w: 65 }, { label: 'CPU cores', w: 75 },
-        { label: 'CPU %', w: 55 }, { label: 'RAM (GB)', w: 110 }, { label: 'RAM %', w: 55 },
-        { label: 'VMs', w: 50 }, { label: 'LXC', w: 45 },
-      ];
-      tHead(pCols);
-      d.proxmox.nodes.forEach((n, i) => {
-        tRow(pCols, [n.node, n.status, n.maxcpu, `${n.cpu_usage}%`, `${n.mem_used_gb}/${n.maxmem_gb}`, `${n.mem_usage}%`, `${n.vm_running}/${n.vm_count}`, `${n.lxc_running}/${n.lxc_count}`], i%2===1, {
-          1: n.status==='online'?C.green:C.red,
-          3: n.cpu_usage>80?C.red:n.cpu_usage>60?C.orange:C.gray2,
-          5: n.mem_usage>80?C.red:n.mem_usage>60?C.orange:C.gray2,
-        });
-      });
-    }
-
-    // ── 7. ENTRA ID ───────────────────────────────────────────────────────
+    // Entra ID
     if (d.entra?.total > 0) {
-      sectionTitle('Entra ID App Registrations');
+      sec('Entra ID App Registrations');
       const esw = (PW-6)/3;
-      const esy = doc.y;
-      statBox(M,       esy, esw-3, 44, d.entra.total,                        'Total Apps',          C.accent);
-      statBox(M+esw,   esy, esw-3, 44, d.entra.expiring_30,                  'Expiring this month', d.entra.expiring_30>0?C.red:C.gray4);
-      statBox(M+esw*2, esy, esw-3, 44, d.entra.total-d.entra.expiring_30,   'OK',                  C.green);
-      doc.y = esy + 52;
+      const esy = curY;
+      stat(M,       esy, esw-3, 48, d.entra.total,                      'Total Apps',         C.accent);
+      stat(M+esw,   esy, esw-3, 48, d.entra.expiring_30,                 'Expiring this month', d.entra.expiring_30>0?C.red:C.g4);
+      stat(M+esw*2, esy, esw-3, 48, d.entra.total-d.entra.expiring_30,  'OK',                  C.green);
+      curY = esy + 52;
     }
 
-    // ════════════════════════════════════════════════════════════════════════
-    // FOOTER ON ALL PAGES
-    // ════════════════════════════════════════════════════════════════════════
-    const range = doc.bufferedPageRange();
-    for (let i = 0; i < range.count; i++) {
-      doc.switchToPage(range.start + i);
-      doc.rect(0, H-26, W, 26).fill(C.dark);
-      doc.fillColor(C.gray4).fontSize(7.5).font('Helvetica')
-        .text(`${appName}  ·  Infrastructure Report  ·  ${new Date().toLocaleDateString('en')}`, M, H-16, { width: PW*0.7 });
-      doc.fillColor(C.gray4).fontSize(7.5)
-        .text(`Page ${i+1} of ${range.count}`, M, H-16, { width: PW, align: 'right' });
-    }
+    // Page footer
+    doc.rect(0, H-30, W, 30).fill('#050D1A');
+    doc.fillColor(C.g4).fontSize(7).font('Helvetica')
+      .text(`${appName}  ·  Infrastructure Report  ·  ${new Date().toLocaleDateString('en')}`, M, H-18, {width:PW*0.7})
+      .text('Page 2 of 2', M, H-18, {width:PW, align:'right'});
+
+    // Fix page 1 footer page number
+    doc.switchToPage(0);
+    doc.fillColor(C.g4).fontSize(7).font('Helvetica')
+      .text('Page 1 of 2', M, H-18, {width:PW, align:'right'});
 
     doc.flushPages();
     doc.end();
@@ -647,7 +548,7 @@ router.get('/generate', requireRole('superadmin', 'admin'), async (req, res) => 
     if (!res.headersSent) {
       res.status(500).json({ error: err.message });
     } else {
-      try { doc.end(); } catch {}
+      try { if (doc) doc.end(); } catch {}
     }
   }
 });
