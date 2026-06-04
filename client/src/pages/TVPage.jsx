@@ -450,9 +450,14 @@ export default function TVPage() {
               <span className="text-xs">{lastUpdated.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
             </div>
           )}
-          <span className="text-white font-mono">
-            <Clock />
-          </span>
+          <div className="text-right">
+            <div className="text-white font-mono text-3xl font-bold leading-none tracking-tight">
+              <Clock />
+            </div>
+            <div className="text-gray-500 font-mono text-xs mt-0.5">
+              <ClockDate />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -484,4 +489,13 @@ function Clock() {
     return () => clearInterval(t)
   }, [])
   return <>{time.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</>
+}
+
+function ClockDate() {
+  const [time, setTime] = useState(new Date())
+  useEffect(() => {
+    const t = setInterval(() => setTime(new Date()), 60000)
+    return () => clearInterval(t)
+  }, [])
+  return <>{time.toLocaleDateString('en', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</>
 }
