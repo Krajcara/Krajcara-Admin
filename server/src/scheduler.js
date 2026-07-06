@@ -72,6 +72,14 @@ function start() {
     } catch (e) { console.error('[Scheduler] Patch check init error:', e.message); }
   });
 
+  // Every 3 minutes — VM health check (frozen VM detection via screenshot)
+  cron.schedule('*/3 * * * *', () => {
+    try {
+      const { checkVMHealth } = require('./services/vmHealthService');
+      checkVMHealth().catch(e => console.error('[Scheduler] VMHealth error:', e.message));
+    } catch (e) { console.error('[Scheduler] VMHealth init error:', e.message); }
+  });
+
   console.log('[Scheduler] Started');
 }
 
