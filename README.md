@@ -1,6 +1,6 @@
 # Krajcara Admin
 
-IT Infrastructure Management application. Self-hosted, runs on Ubuntu Linux on port 3000.
+Self-hosted IT Infrastructure Management application. Runs on Ubuntu Linux, port 3000.
 
 ## Installation
 
@@ -12,7 +12,7 @@ The installer will:
 1. Verify the token against GitHub
 2. Install Node.js 20 LTS (via nvm), `nmap`, and system packages
 3. Clone the repository to `/opt/krajcara-admin/`
-4. Install all server dependencies (net-snmp, xml2js, csv-parse)
+4. Install all server dependencies
 5. Build the frontend
 6. Install and start the systemd service
 
@@ -24,7 +24,7 @@ After installation: `http://SERVER_IP:3000` — admin credentials printed at the
 sudo bash /opt/krajcara-admin/update.sh
 ```
 
-Or from within the app: **Settings → System update → Check for updates → Install update**.
+Or from within the app: **Settings → System update → Check for updates → Install update**.  
 The browser reloads automatically when the server comes back up.
 
 ## Service management
@@ -61,147 +61,157 @@ Key `.env` variables:
 
 SQLite database: `/opt/krajcara-admin/data/krajcara-admin.db`
 
-## Status Page
+---
 
+## Modules
+
+### Dashboard
+Stat cards (monitors up/down, Proxmox nodes), VM grid, DNS status, last speed test, uptime monitor list, notifications panel.
+
+### TV Monitor
+Public fullscreen dashboard at `/tv` — no login required, dark theme, auto-refresh every 30 seconds.
+Accessible via the monitor icon in the header.
+
+**Two tabs:**
+- **Overview** — Uptime Monitor status + Proxmox node cards + Network (routers/DNS) + Internet Speed + Alerts
+- **Proxmox** — Node summary bar + VM grid (6 per row) with CPU/RAM/Disk bars, OS, IP address
+
+### Status Page
 Public page at `/status` — no login required, dark theme, auto-refresh every 30 seconds.
-Accessible via the shield icon in the header.
 
 **Tabs:** Uptime Monitor (sparkline charts), Network (routers ping + speed stats), Proxmox (nodes with CPU/RAM/disk + storage), M365 Health (service status with active incidents)
 
----
+### Inventory
+- **Licences** — vendor, seats (used/total), billing cycle, price/currency/tax, cost summary by currency, credentials (URL/user/pass/MFA), expiry warnings, Renew modal with suggested date
+- **Entra ID Apps** — Client ID, secret (masked, reveal on demand), expiry countdown, warning badge
 
-## Changelog
+### Network
+- **Uptime Monitor** — HTTP/HTTPS/TCP/ICMP/DNS monitors; real-time via Socket.io; sparkline charts
+- **Routers** — inventory with SNMP v2c/v3; auto-ping; expandable stats panel (uptime, CPU%, RAM%, WAN traffic, interface list); refresh interval selector
+- **DNS** — Local servers (Technitium, Pi-hole, AdGuard, BIND9, Windows DNS), Cloudflare zones (SPF/DKIM/DMARC/MX), Manual domain check
+- **Net Speed** — built-in speed testing via Cloudflare; Download/Upload/Ping with Min/Avg/Max; hourly auto-test
 
-### Phase 8 — Patch Management
-- **Patch Management** — software update tracking via Proxmox Guest Agent
-  - Checks all running VMs automatically at 04:00 daily; manual "Check all VMs" button
-  - Real-time progress via Socket.io
-  - **Three groups:** Linux VMs, Windows VMs, LXC Containers (listed only — no patch check)
-  - **Linux (Debian/Ubuntu)** — `apt list --upgradable`
-  - **Linux (RHEL/CentOS/Rocky)** — `dnf check-update`
-  - **Linux (Alpine)** — `apk list --upgradable`
-  - **Windows** — PowerShell `Get-WindowsUpdate` (requires PSWindowsUpdate module + QEMU Guest Agent)
-  - OS detection uses Proxmox VM config `ostype` field first (reliable, no guest agent needed for Windows detection)
-  - Deleted VMs are automatically removed from patch data on next check
-  - VM cards: green (up to date), yellow (updates), orange (security updates), LXC shown in neutral grey
-  - Click card to expand: package list with current → available version and severity badge
-  - Summary counts exclude LXC containers
-  - Filter: All / Updates / Security / OK / LXC
+### Infrastructure
+- **Proxmox** — API token auth; nodes, VMs and LXC with CPU/RAM/disk; start/stop/reboot/shutdown; disk usage via guest agent fsinfo (Pulse-style deduplication); storage overview
+- **Network Scanner** — Hosts CRUD, 6 nmap profiles + custom, real-time progress, detailed diff (new hosts, gone hosts, new/closed ports, version changes)
+- **Scan Automation** — Cron schedules, alert rules (triggers + email/webhook), alerts log
+- **IP Space** — VLANs (colour-coded cards) + IP addresses; import from Network Scanner
+- **Patch Management** — software update tracking via Proxmox Guest Agent; Linux (apt/dnf/apk) and Windows (PSWindowsUpdate); OS detection via Proxmox config `ostype`; daily auto-check at 04:00
+- **Servers & Scripts** — SSH server management with web terminal and remote script execution (see below)
 
-  **Windows VM setup (one time per VM):**
-  ```powershell
-  Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers
-  Set-ExecutionPolicy RemoteSigned -Force
-  ```
+### Servers & Scripts
 
-  **Proxmox token permission required:** `VM.Monitor` or admin role on the token
+Manage SSH servers and execute scripts remotely — all from the browser.
 
-### Phase 7 — Network Management
-- **IP Space** — VLAN and IP address management
-  - VLANs: VLAN ID, name, subnet, gateway, DHCP range, purpose, colour, router link — displayed as colour-coded cards
-  - IP Addresses: IP, hostname, MAC, VLAN assignment, purpose, last seen, ping on demand; search and VLAN filter
-  - Import from Network Scanner — select completed scan, pick hosts, assign to VLAN (INSERT OR UPDATE — no duplicates)
-- **Network Scanner — detailed diff** — full rewrite of diff algorithm
-  - New hosts (green), gone hosts (red), new open ports with service/version info, closed ports, version changes (old → new in yellow)
+**Servers tab:**
+- Add SSH servers (IP, port, user, password or SSH key, OS type, group)
+- Test connection — verifies SSH access on demand
+- Group servers (e.g. Web servers, Database, Backup)
+- Open web terminal directly from server card
 
-### Phase 6 — Health & Notifications
-- **Health check** — `/api/health` returns status of all services: database, Proxmox, M365, scheduler
-- **In-app notifications** — bell icon in header with real-time unread badge via Socket.io
-  - Dropdown with New / Earlier sections; mark as read, mark all, clear read
-- **Notification triggers:**
-  - Monitor down / recovered (immediate)
-  - Proxmox VM stopped / started (every 15 minutes)
-  - Router offline / back online (every 15 minutes, ping)
-  - DNS server offline / back online (every 15 minutes, ping)
-  - Entra ID client secret expiring ≤30 days or expired (every 15 minutes)
-  - Licence expiring — annual: 60/30/7 days before; monthly: 7/3 days before; expired: every 3 days
-- **Email notifications** — M365 (Microsoft Graph) or SMTP fallback (Gmail etc); configure in Settings → Notifications; M365 requires `Mail.Send` permission
-- **Sidebar accordion navigation** — groups collapsed by default; one group open at a time; active route auto-opens its group
-- **Status Page link** — moved to header (shield icon)
+**Scripts tab:**
+- Create Bash (Linux) or PowerShell (Windows) scripts
+- Run script on one or multiple servers simultaneously — parallel execution with live output
+- Execution history with per-server results and exit codes
 
-### Phase 5 — Advanced
-- **Microsoft 365** — Microsoft Graph API integration via Entra ID App Registration
-  - Overview: total users, active users, licensed users, MFA enabled count
-  - Users tab: filter by Admins / No MFA / Disabled / Shared Mailboxes; MFA status; admin roles; group memberships
-  - Licences tab: all SKUs with total/used/available seats and usage bar
-  - Storage tab: OneDrive and Mailbox usage per user, sorted by size (largest first); period filter 7/30/90/180 days
-  - Service Health tab: real-time service status with active incident details
+**Web terminal:**
+- Opens in a new browser window at `/terminal/:serverId`
+- Full interactive SSH session via WebSocket + xterm.js
+- GitHub dark theme, 5000 line scrollback, automatic resize
+- Keepalive ping every 30 seconds
 
-  **Required API permissions** (Application type, Admin consent required):
+**SSH setup requirements:**
+
+For non-interactive script execution (apt, systemctl etc.), the SSH user needs passwordless sudo:
+```bash
+echo "YOUR_SSH_USER ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/krajcara-admin
+```
+
+Or connect directly as `root`.
+
+**Required npm packages (installed automatically on update):**
+```
+ssh2, ws (server) | @xterm/xterm, @xterm/addon-fit, @xterm/addon-web-links (client)
+```
+
+### Advanced
+- **Microsoft 365** — Microsoft Graph API integration
+  - Overview, Users (MFA/roles/groups), Licences, Storage, Mail Flow (monthly trend + by domain), Service Health
+  - **Required API permissions** (Application, Admin consent):
 
   | Permission | Purpose |
   |---|---|
   | `User.Read.All` | List all users |
   | `Directory.Read.All` | Admin roles, group memberships |
   | `Organization.Read.All` | Tenant information |
-  | `Reports.Read.All` | MFA statistics, storage reports |
+  | `Reports.Read.All` | MFA statistics, storage, mail flow |
   | `ServiceHealth.Read.All` | Service health status |
   | `UserAuthenticationMethod.Read.All` | MFA registration per user |
   | `Mail.Send` | Email notifications (optional) |
 
-  **Setup:** Entra ID → App registrations → API permissions → Add → Microsoft Graph → Application permissions → Grant admin consent
+- **Backup** — superadmin only; manual + automatic daily backup at 03:00; download DB; restore from file
 
-- **Backup & Restore** — superadmin only
-  - Create manual backup (VACUUM INTO), download current DB, restore from file (validates integrity, auto pre-restore backup, restarts service)
-  - Automatic daily backup at 03:00 — keeps last 7 auto-backups, 10 manual
-
-### Phase 4 — Infrastructure
-- **Proxmox** — API token auth; nodes, VMs and LXC with CPU/RAM/disk; start/stop/reboot/shutdown; storage overview; all sorted alphabetically; VM/LXC type badge next to each name
-- **Network Scanner** — Hosts (CRUD), New Scan (6 nmap profiles + custom, real-time progress), Scan History (expandable port table, detailed diff)
-- **Scan Automation** — Schedules (cron-based), Alert Rules (triggers + email/webhook), Alerts Log
-
-### Phase 3 — Network
-- **Uptime Monitor** — HTTP/HTTPS/TCP/ICMP/DNS monitors; real-time via Socket.io; sparkline charts; sorted alphabetically
-- **Routers** — inventory with SNMP v2c/v3; auto-ping on load; expandable stats panel (uptime, CPU%, RAM%, WAN traffic); refresh interval selector
-- **DNS — Local** — primary/backup cards (Technitium, Pi-hole, AdGuard, BIND9, Windows DNS); query/blocked/client stats
-- **DNS — Cloudflare** — API token; auto-fetch zones; SPF/DKIM/DMARC/MX badges; auto-refresh interval
-- **DNS — Manual check** — add domains, check email security records on demand
-- **Net Speed** — built-in speed testing via Cloudflare; Download/Upload/Ping with Min/Avg/Max; ping chart; hourly auto-test
-
-### Phase 2 — Inventory
-- **Licences** — vendor, seats (used/total with bar), billing cycle, price/currency/tax, cost summary, credentials (URL/user/pass/MFA), expiry warnings, Renew button
-- **Entra ID Apps** — Client ID, secret (masked, reveal on demand), expiry countdown, warning badge
-
-### Phase 1 — Foundation
-- **Login** — JWT authentication, rate limited
-- **Two-factor authentication (TOTP)** — Google Authenticator compatible, 8 backup codes (Profile page)
-- **First login flow** — forced password change
-- **Dashboard** — monitors (up/down), Proxmox nodes with VM grid, DNS status, last speed test, uptime monitor list
-- **Users** — create/edit/deactivate; roles: superadmin, admin, operator, viewer
+### Admin
+- **Users** — create/edit/deactivate; roles assignment
 - **Audit Log** — full action log with filters and CSV export
-- **Settings** — app name, SMTP, data retention, notifications, system update
-- **Profile** — change password, TOTP, personal API keys
-- **API Keys** — personal tokens (`ka_...`), max 10 per user
-- **Dark mode** — toggle in header
-- **Update system** — check GitHub, install, auto-reload browser
+- **Notification Log** — full notification history (including archived); filters; purge archived
+- **Reports** — infrastructure overview (online) + PDF export
+- **Settings** — app name, SMTP/M365 email, per-module email controls, data retention, system update
 
-## Roadmap
+### Account
+- **Profile** — change password, TOTP (Google Authenticator), personal API keys
+- **Two-factor authentication** — TOTP compatible, 8 backup codes
 
-- ✅ **Phase 1** — Foundation
-- ✅ **Phase 2** — Inventory
-- ✅ **Phase 3** — Network
-- ✅ **Phase 4** — Infrastructure
-- ✅ **Phase 5** — Advanced (Microsoft 365, Backup)
-- ✅ **Phase 6** — Health & Notifications
-- ✅ **Phase 7** — Network Management (IP Space, Scanner Diff)
-- ✅ **Phase 8** — Patch Management
+---
 
-## TV Monitor
+## Notifications
 
-Public fullscreen dashboard at `/tv` — no login required, dark theme, auto-refresh every 30 seconds.
-Accessible via the monitor icon in the header.
+### Triggers
 
-**Two tabs:**
+| Module | Event | Frequency |
+|---|---|---|
+| Monitors | Down / recovered | Immediate |
+| Proxmox | VM stopped / started | Every 15 min |
+| Routers | Offline / back online | Every 15 min |
+| DNS | Offline / back online | Every 15 min |
+| Proxmox | VM possibly frozen (CPU ≥ 80% + dark console) | Every 3 min |
+| Licences | Expiring / expired | Daily at 03:00 |
+| Entra ID | Secret expiring / expired | Daily at 03:00 |
 
-**Overview** — three columns:
-- Uptime Monitor: overall status banner + all monitors with status dot, latency, UP/DOWN badge
-- Middle: Proxmox node cards (CPU/RAM/Disk bars) + Network (routers and DNS online/offline) + Internet Speed (Download/Upload/Ping)
-- Alerts: last 8 notifications with type icon and time
+### VM Health Monitoring (Frozen VM Detection)
 
-**Proxmox** — optimized for many VMs:
-- Node summary bar: CPU/RAM/Disk bars, uptime, VM count per node
-- VM grid (6 per row) grouped by node: Name, Type badge (VM/LXC), VMID, Status, CPU/RAM/Disk bars, OS, IP address
-- Stopped VMs shown faded
+Every 3 minutes the scheduler checks all running QEMU VMs:
+1. If CPU ≥ 80% → takes a console screenshot via Proxmox API
+2. Analyses the screenshot — if ≥ 95% black pixels = dark console
+3. CPU high + dark console → starts tracking
+4. After **5 minutes** → in-app warning notification
+5. After **15 minutes** → error notification + email
+6. When VM recovers → success notification, tracking reset
+
+Requires `VM.Console` permission on the Proxmox token (Administrator role covers this).
+
+### Per-module email control
+
+Settings → Notifications allows enabling/disabling email per module:
+- Monitors, Proxmox, Routers, DNS — **enabled by default**
+- Licences, Entra ID — **disabled by default** (daily check, in-app only unless enabled)
+
+Email sent via M365 (Microsoft Graph) or SMTP fallback.
+
+---
+
+## Scheduler
+
+| Time | Job |
+|---|---|
+| Every 3 min | VM health check (frozen VM detection) |
+| Every 15 min | Notification checks (monitors/routers/DNS/Proxmox) |
+| Every hour | Net speed test |
+| Daily 03:00 | Cleanup (tokens, audit log retention, auto-backup) |
+| Daily 03:00 | Licence + Entra ID expiry notifications |
+| Daily 04:00 | Patch Management check |
+
+---
 
 ## Project structure
 
@@ -220,11 +230,86 @@ krajcara-admin/
 │       ├── lib/         SNMP libs (MikroTik, Cisco, FortiGate, generic)
 │       ├── middleware/  Auth (JWT), audit logging
 │       ├── routes/      API handlers
-│       └── services/    Monitor worker, nmap, scan, notification, patch services
+│       └── services/    Monitor worker, nmap, scan, notification, patch,
+│                        terminal, script runner, VM health services
 ├── install.sh           First-time installer
 ├── update.sh            Updater
 └── krajcara-admin.service  systemd service
 ```
+
+---
+
+## Changelog
+
+### Phase 9 — Servers & Scripts (Faza 1)
+- **Servers & Scripts** module added to Infrastructure group
+- SSH server management — add servers with password or key auth, test connection, group by name
+- **Web terminal** — full interactive SSH in browser via xterm.js + WebSocket (`/terminal/:serverId`)
+- **Script runner** — save Bash/PowerShell scripts, run on multiple servers in parallel, live output, execution history
+- New backend services: `terminalService.js`, `scriptRunner.js`
+- New routes: `/api/servers`, `/api/terminal`, `/ws/terminal` (WebSocket)
+- New DB tables: `ssh_servers`, `ssh_scripts`, `script_executions`
+- New npm dependencies: `ssh2`, `ws` (server); `@xterm/xterm`, `@xterm/addon-fit`, `@xterm/addon-web-links` (client)
+
+### Phase 8 — Patch Management
+- Patch Management — software update tracking via Proxmox Guest Agent
+- Three groups: Linux VMs (apt/dnf/apk), Windows VMs (PSWindowsUpdate), LXC (listed only)
+- OS detection via Proxmox config `ostype` field
+- Deleted VMs automatically removed from patch data on next check
+- Daily auto-check at 04:00
+
+### Phase 7 — Network Management
+- IP Space — VLANs and IP addresses management; import from Network Scanner
+- Network Scanner diff rewrite — new/gone hosts, new/closed ports, version changes
+
+### Phase 6 — Health & Notifications
+- In-app notifications with real-time bell icon via Socket.io
+- Email notifications via M365 or SMTP fallback
+- Per-module email control in Settings
+- Notification Log page (Admin section)
+- VM health monitoring — frozen VM detection via Proxmox console screenshot analysis
+- Sidebar accordion navigation
+
+### Phase 5 — Advanced
+- Microsoft 365 integration (Graph API) — Users, Licences, Storage, Mail Flow, Service Health
+- Backup & Restore (superadmin only) — manual + automatic daily
+
+### Phase 4 — Infrastructure
+- Proxmox — VMs, LXC, storage; start/stop/reboot/shutdown; disk usage via guest agent
+- Network Scanner — nmap profiles, real-time progress, diff
+- Scan Automation — cron schedules, alert rules
+
+### Phase 3 — Network
+- Uptime Monitor — HTTP/HTTPS/TCP/ICMP/DNS; Socket.io; sparkline charts
+- Routers — SNMP v2c/v3; traffic counters
+- DNS — local servers, Cloudflare zones, manual domain check
+- Net Speed — Cloudflare speed test; hourly auto-test
+
+### Phase 2 — Inventory
+- Licences — full lifecycle management with cost tracking
+- Entra ID Apps — secret expiry monitoring
+
+### Phase 1 — Foundation
+- JWT authentication, TOTP 2FA, first login flow
+- Dashboard, Users, Audit Log, Settings, Profile, API Keys
+- Dark mode, update system
+
+---
+
+## Roadmap
+
+- ✅ **Phase 1** — Foundation
+- ✅ **Phase 2** — Inventory
+- ✅ **Phase 3** — Network
+- ✅ **Phase 4** — Infrastructure
+- ✅ **Phase 5** — Advanced (Microsoft 365, Backup)
+- ✅ **Phase 6** — Health & Notifications
+- ✅ **Phase 7** — Network Management
+- ✅ **Phase 8** — Patch Management
+- ✅ **Phase 9** — Servers & Scripts (web terminal, script runner)
+- 🔲 **Phase 10** — Metrics history (CPU/RAM/disk trends)
+- 🔲 **Phase 11** — WinRM support for Windows servers
+- 🔲 **Phase 12** — Asset Management
 
 ## License
 
