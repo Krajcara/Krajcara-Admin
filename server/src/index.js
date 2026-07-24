@@ -36,7 +36,7 @@ const notifRoutes    = require('./routes/notifications');
 const ipspaceRoutes  = require('./routes/ipspace');
 const patchRoutes    = require('./routes/patches');
 const reportsRoutes  = require('./routes/reports');
-const metricsRoutes  = require('./routes/metrics');
+const winrmRoutes    = require('./routes/winrm');
 
 const axios = require('axios');
 
@@ -490,7 +490,7 @@ app.use('/api/backup',     requireAuth, backupRouter);
 app.use('/api/notifications', requireAuth, notifRoutes);
 app.use('/api/ipspace',       requireAuth, ipspaceRoutes);
 app.use('/api/patches',       requireAuth, patchRoutes);
-app.use('/api/metrics',       requireAuth, metricsRoutes);
+app.use('/api/winrm',         requireAuth, winrmRoutes);
 app.use('/api/reports',       requireAuth, reportsRoutes);
 
 // ── Socket.io ─────────────────────────────────────────────────────
