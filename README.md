@@ -98,6 +98,8 @@ Public page at `/status` — no login required, dark theme, auto-refresh every 3
 - **IP Space** — VLANs (colour-coded cards) + IP addresses; import from Network Scanner
 - **Patch Management** — software update tracking via Proxmox Guest Agent; Linux (apt/dnf/apk) and Windows (PSWindowsUpdate); OS detection via Proxmox config `ostype`; daily auto-check at 04:00
 - **Servers & Scripts** — SSH server management with web terminal and remote script execution (see below)
+- **Metrics History** — CPU/RAM/disk trends per VM and Proxmox node (see below)
+- **Windows Servers** — WinRM management for Windows servers with PowerShell script execution (see below)
 
 ### Servers & Scripts
 
@@ -133,6 +135,48 @@ Or connect directly as `root`.
 ```
 ssh2, ws (server) | @xterm/xterm, @xterm/addon-fit, @xterm/addon-web-links (client)
 ```
+
+### Metrics History
+
+Historical CPU, RAM and disk metrics for all running Proxmox VMs and nodes.
+
+- Collected every **5 minutes** automatically by the scheduler
+- Retained for **7 days**, then auto-deleted
+- **VMs view** — list of all VMs grouped by node; click any VM to expand a line chart showing CPU/RAM/Disk trends
+  - Period filter: 1h / 6h / 24h / 7d / 30d
+  - Summary stats: avg CPU, avg RAM, peak CPU for period
+  - Disk used/max GB displayed below chart
+- **Nodes view** — one chart per Proxmox node with CPU and RAM trends
+- **New DB tables:** `vm_metrics`, `node_metrics`
+- **New route:** `/api/metrics`
+
+### Windows Servers (WinRM)
+
+Manage Windows servers via WinRM (Windows Remote Management) — no agent required.
+
+**Servers tab:**
+- Add Windows servers (IP, WinRM port, user, password, HTTP or HTTPS)
+- Test connection — verifies WinRM access and returns hostname + response time
+- Live metrics — dohvata CPU%, RAM%, Disk% per drive, uptime, process count directly via PowerShell
+- Group servers by function (e.g. Domain Controllers, File Servers)
+
+**Scripts tab:**
+- Create PowerShell scripts
+- Run on one or multiple Windows servers simultaneously — parallel execution
+- Execution history with per-server output and exit codes
+
+**WinRM setup — run once on each Windows server as Administrator:**
+```powershell
+Enable-PSRemoting -Force
+Set-Item WSMan:\localhost\Service\Auth\Basic $true
+Set-Item WSMan:\localhost\Service\AllowUnencrypted $true
+```
+
+**Implementation:** pure SOAP/HTTP, no external WinRM libraries — ported from Python (server-manager project).
+Supports Basic auth over HTTP (suitable for internal VPN/intranet networks only).
+
+**New DB tables:** `winrm_servers`, `winrm_scripts`, `winrm_executions`, `winrm_metrics`
+**New route:** `/api/winrm`
 
 ### Advanced
 - **Microsoft 365** — Microsoft Graph API integration
@@ -204,12 +248,13 @@ Email sent via M365 (Microsoft Graph) or SMTP fallback.
 
 | Time | Job |
 |---|---|
-| Every 3 min | VM health check (frozen VM detection) |
+| Every 3 min  | VM health check (frozen VM detection) |
+| Every 5 min  | Collect VM/node metrics (CPU/RAM/disk) |
 | Every 15 min | Notification checks (monitors/routers/DNS/Proxmox) |
-| Every hour | Net speed test |
-| Daily 03:00 | Cleanup (tokens, audit log retention, auto-backup) |
-| Daily 03:00 | Licence + Entra ID expiry notifications |
-| Daily 04:00 | Patch Management check |
+| Every hour   | Net speed test |
+| Daily 03:00  | Cleanup (tokens, audit log retention, auto-backup) |
+| Daily 03:00  | Licence + Entra ID expiry notifications |
+| Daily 04:00  | Patch Management check |
 
 ---
 
@@ -231,7 +276,8 @@ krajcara-admin/
 │       ├── middleware/  Auth (JWT), audit logging
 │       ├── routes/      API handlers
 │       └── services/    Monitor worker, nmap, scan, notification, patch,
-│                        terminal, script runner, VM health services
+│                        terminal, script runner, VM health, metrics,
+│                        WinRM services
 ├── install.sh           First-time installer
 ├── update.sh            Updater
 └── krajcara-admin.service  systemd service
@@ -240,6 +286,27 @@ krajcara-admin/
 ---
 
 ## Changelog
+
+### Phase 11 — Windows Servers / WinRM (Faza 3)
+- **Windows Servers** module added to Infrastructure group
+- WinRM service — pure Node.js SOAP/HTTP implementation, no external WinRM libraries
+- Live metrics via PowerShell: CPU%, RAM%, per-drive disk%, uptime, process count
+- PowerShell script management — save, run on multiple servers in parallel, execution history
+- Test connection — verifies WinRM access, returns hostname and response time
+- New backend service: `winrmService.js`
+- New route: `/api/winrm`
+- New DB tables: `winrm_servers`, `winrm_scripts`, `winrm_executions`, `winrm_metrics`
+
+### Phase 10 — Metrics History (Faza 2)
+- **Metrics History** module added to Infrastructure group (below Proxmox)
+- Automatic collection every 5 minutes for all running VMs and Proxmox nodes
+- 7-day retention with automatic cleanup
+- VMs view: expandable line charts per VM — CPU/RAM/Disk trends, summary stats (avg/peak)
+- Nodes view: CPU and RAM trend charts per node
+- Period filter: 1h / 6h / 24h / 7d / 30d
+- New backend service: `metricsService.js`
+- New route: `/api/metrics`
+- New DB tables: `vm_metrics`, `node_metrics`
 
 ### Phase 9 — Servers & Scripts (Faza 1)
 - **Servers & Scripts** module added to Infrastructure group
@@ -306,10 +373,9 @@ krajcara-admin/
 - ✅ **Phase 6** — Health & Notifications
 - ✅ **Phase 7** — Network Management
 - ✅ **Phase 8** — Patch Management
-- ✅ **Phase 9** — Servers & Scripts (web terminal, script runner)
-- 🔲 **Phase 10** — Metrics history (CPU/RAM/disk trends)
-- 🔲 **Phase 11** — WinRM support for Windows servers
-- 🔲 **Phase 12** — Asset Management
+- ✅ **Phase 9**  — Servers & Scripts (web terminal, script runner)
+- ✅ **Phase 10** — Metrics history (CPU/RAM/disk trends per VM and node)
+- ✅ **Phase 11** — Windows Servers / WinRM (PowerShell, live metrics, script runner)
 
 ## License
 
