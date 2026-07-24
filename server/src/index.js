@@ -36,6 +36,8 @@ const notifRoutes    = require('./routes/notifications');
 const ipspaceRoutes  = require('./routes/ipspace');
 const patchRoutes    = require('./routes/patches');
 const reportsRoutes  = require('./routes/reports');
+const serversRoutes  = require('./routes/servers');
+const terminalRoutes = require('./routes/terminal');
 
 const axios = require('axios');
 
@@ -489,13 +491,30 @@ app.use('/api/backup',     requireAuth, backupRouter);
 app.use('/api/notifications', requireAuth, notifRoutes);
 app.use('/api/ipspace',       requireAuth, ipspaceRoutes);
 app.use('/api/patches',       requireAuth, patchRoutes);
+app.use('/api/servers',       requireAuth, serversRoutes);
+app.use('/api/terminal',      requireAuth, terminalRoutes);
 app.use('/api/reports',       requireAuth, reportsRoutes);
 
 // ── Socket.io ─────────────────────────────────────────────────────
 io.on('connection', (socket) => {
   socket.on('disconnect', () => {});
 });
-global.io = io; // Make accessible to routes (update, monitorWorker);
+global.io = io;
+
+// ── WebSocket terminal ─────────────────────────────────────────────────────────
+const { handleTerminalWS } = require('./routes/terminal');
+const ws = require('ws');
+const wss = new ws.Server({ noServer: true });
+
+server.on('upgrade', (request, socket, head) => {
+  if (request.url.startsWith('/ws/terminal')) {
+    wss.handleUpgrade(request, socket, head, wsClient => {
+      handleTerminalWS(wsClient, request, require('./db/database'));
+    });
+  } else {
+    socket.destroy();
+  }
+}); // Make accessible to routes (update, monitorWorker);
 
 // ── Frontend SPA (production) ─────────────────────────────────────
 if (process.env.NODE_ENV === 'production') {
