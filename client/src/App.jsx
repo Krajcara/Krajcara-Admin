@@ -26,8 +26,7 @@ import TVPage               from './pages/TVPage'
 import NetSpeedPage       from './pages/NetSpeedPage'
 import M365Page           from './pages/M365Page'
 import BackupPage         from './pages/BackupPage'
-import ServersPage        from './pages/ServersPage'
-import TerminalPage       from './pages/TerminalPage'
+import MetricsPage        from './pages/MetricsPage'
 
 function ProtectedRoute({ children, roles }) {
   const { isAuthenticated, user } = useAuthStore()
@@ -49,7 +48,6 @@ export default function App() {
         <Route path="/change-password" element={<ChangePasswordPage />} />
         <Route path="/status"          element={<StatusPage />} />
         <Route path="/tv"              element={<TVPage />} />
-        <Route path="/terminal/:serverId" element={<TerminalPage />} />
 
         {/* Protected routes */}
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
@@ -63,12 +61,12 @@ export default function App() {
           <Route path="scanner"     element={<NetworkScannerPage />} />
           <Route path="automation"  element={<ScanAutomationPage />} />
           <Route path="ipspace"      element={<IPSpacePage />} />
+          <Route path="metrics"          element={<MetricsPage />} />
           <Route path="patches"         element={<PatchManagementPage />} />
           <Route path="notification-log" element={<NotificationLogPage />} />
           <Route path="reports"          element={<ReportsPage />} />
           <Route path="netspeed"     element={<NetSpeedPage />} />
           <Route path="m365"         element={<M365Page />} />
-          <Route path="servers"          element={<ServersPage />} />
           <Route path="backup"       element={<ProtectedRoute roles={['superadmin']}><BackupPage /></ProtectedRoute>} />
           <Route path="users"    element={<ProtectedRoute roles={['superadmin', 'admin']}><UsersPage /></ProtectedRoute>} />
           <Route path="audit"    element={<ProtectedRoute roles={['superadmin', 'admin']}><AuditPage /></ProtectedRoute>} />
