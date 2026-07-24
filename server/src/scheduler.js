@@ -72,12 +72,12 @@ function start() {
     } catch (e) { console.error('[Scheduler] Patch check init error:', e.message); }
   });
 
-  // Every 3 minutes — VM health check (frozen VM detection via screenshot)
-  cron.schedule('*/3 * * * *', () => {
+  // Every 5 minutes — collect VM/node metrics
+  cron.schedule('*/5 * * * *', () => {
     try {
-      const { checkVMHealth } = require('./services/vmHealthService');
-      checkVMHealth().catch(e => console.error('[Scheduler] VMHealth error:', e.message));
-    } catch (e) { console.error('[Scheduler] VMHealth init error:', e.message); }
+      const { collectMetrics } = require('./services/metricsService');
+      collectMetrics().catch(e => console.error('[Scheduler] Metrics error:', e.message));
+    } catch (e) { console.error('[Scheduler] Metrics init error:', e.message); }
   });
 
   console.log('[Scheduler] Started');
