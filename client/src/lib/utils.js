@@ -37,3 +37,11 @@ export function statusDot(status) {
     unknown:  'bg-gray-300'
   }[status] || 'bg-gray-300'
 }
+
+export function fmtUptime(s) {
+  if (!s) return '—'
+  const d = Math.floor(s/86400), h = Math.floor((s%86400)/3600), m = Math.floor((s%3600)/60)
+  if (d) return `${d}d ${h}h`
+  if (h) return `${h}h ${m}m`
+  return `${m}m`
+}
