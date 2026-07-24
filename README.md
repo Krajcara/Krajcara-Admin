@@ -287,7 +287,7 @@ krajcara-admin/
 
 ## Changelog
 
-### Phase 11 — Windows Servers / WinRM (Faza 3)
+### Phase 11 — Windows Servers / WinRM
 - **Windows Servers** module added to Infrastructure group
 - WinRM service — pure Node.js SOAP/HTTP implementation, no external WinRM libraries
 - Live metrics via PowerShell: CPU%, RAM%, per-drive disk%, uptime, process count
@@ -297,7 +297,7 @@ krajcara-admin/
 - New route: `/api/winrm`
 - New DB tables: `winrm_servers`, `winrm_scripts`, `winrm_executions`, `winrm_metrics`
 
-### Phase 10 — Metrics History (Faza 2)
+### Phase 10 — Metrics History
 - **Metrics History** module added to Infrastructure group (below Proxmox)
 - Automatic collection every 5 minutes for all running VMs and Proxmox nodes
 - 7-day retention with automatic cleanup
@@ -308,7 +308,7 @@ krajcara-admin/
 - New route: `/api/metrics`
 - New DB tables: `vm_metrics`, `node_metrics`
 
-### Phase 9 — Servers & Scripts (Faza 1)
+### Phase 9 — Servers & Scripts
 - **Servers & Scripts** module added to Infrastructure group
 - SSH server management — add servers with password or key auth, test connection, group by name
 - **Web terminal** — full interactive SSH in browser via xterm.js + WebSocket (`/terminal/:serverId`)
