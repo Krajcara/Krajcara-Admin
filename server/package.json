@@ -31,6 +31,8 @@
     "csv-parse": "^5.5.6",
     "nodemailer": "^6.9.14",
     "pdfkit": "^0.15.0",
+    "ssh2": "^1.16.0",
+    "ws": "^8.18.0",
     "jimp": "^0.22.12"
   },
   "devDependencies": {
