@@ -26,7 +26,7 @@ import TVPage               from './pages/TVPage'
 import NetSpeedPage       from './pages/NetSpeedPage'
 import M365Page           from './pages/M365Page'
 import BackupPage         from './pages/BackupPage'
-import MetricsPage        from './pages/MetricsPage'
+import WinRMPage          from './pages/WinRMPage'
 
 function ProtectedRoute({ children, roles }) {
   const { isAuthenticated, user } = useAuthStore()
@@ -61,7 +61,7 @@ export default function App() {
           <Route path="scanner"     element={<NetworkScannerPage />} />
           <Route path="automation"  element={<ScanAutomationPage />} />
           <Route path="ipspace"      element={<IPSpacePage />} />
-          <Route path="metrics"          element={<MetricsPage />} />
+          <Route path="winrm"            element={<WinRMPage />} />
           <Route path="patches"         element={<PatchManagementPage />} />
           <Route path="notification-log" element={<NotificationLogPage />} />
           <Route path="reports"          element={<ReportsPage />} />
