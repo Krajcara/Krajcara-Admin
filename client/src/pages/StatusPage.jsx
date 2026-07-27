@@ -107,7 +107,7 @@ export default function StatusPage() {
     if (mon.status    === 'fulfilled') setMonitors(mon.value || [])
     if (rtr.status    === 'fulfilled') setRouters(rtrVal)
     if (dnsData.status=== 'fulfilled') setDns(dnsData.value || [])
-    if (domData.status=== 'fulfilled') setDomains(domData.value || [])
+    if (domData.status=== 'fulfilled') setDomains(domData.value || { domains:[], summary:{total:0,ok:0,issues:0} })
     if (spd.status    === 'fulfilled') setSpeed(spd.value)
     if (prx.status    === 'fulfilled') setProxmox(prx.value)
     setLastUpdate(new Date())
@@ -253,42 +253,7 @@ export default function StatusPage() {
               </div>
             )}
 
-            {/* 3. DNS */}
-            {dns.length > 0 && (
-              <div style={S.section}>
-                <div style={S.secHdr}>
-                  <span style={S.secTitle}>DNS servers</span>
-                  <span style={S.secCount}>{dns.length} servers</span>
-                </div>
-                {dns.map((d, i) => {
-                  const isLast = i === dns.length - 1
-                  return (
-                    <div key={d.id} style={isLast ? S.rowLast : S.row}>
-                      <div style={S.rl}>
-                        <Dot status={d.is_online ? 'ok' : 'down'} />
-                        <div>
-                          <div style={S.rname}>
-                            {d.name}
-                            {d.role && <span style={{ fontSize:10, color:'#58a6ff', marginLeft:6, fontWeight:400 }}>{d.role.toUpperCase()}</span>}
-                          </div>
-                          <div style={S.rsub}>{d.type || 'DNS'} · {d.ip_address}</div>
-                        </div>
-                      </div>
-                      <div style={S.rr}>
-                        {d.queries_per_hour != null && (
-                          <span style={{ fontSize:11, fontFamily:'monospace', color:'#484f58' }}>
-                            {Number(d.queries_per_hour).toLocaleString()} q/h
-                          </span>
-                        )}
-                        <Badge status={d.is_online ? 'ok' : 'down'} label={d.is_online ? 'Online' : 'Offline'} />
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-
-            {/* 3b. DNS servers */}
+            {/* 3. DNS servers */}
             {dns.length > 0 && (
               <div style={S.section}>
                 <div style={S.secHdr}>
@@ -316,28 +281,31 @@ export default function StatusPage() {
               </div>
             )}
 
-            {/* 3c. Domains */}
-            {domains.length > 0 && (
+            {/* 3c. External domains summary */}
+            {domains?.summary?.total > 0 && (
               <div style={S.section}>
                 <div style={S.secHdr}>
                   <span style={S.secTitle}>External domains</span>
-                  <span style={S.secCount}>{domains.length} domains</span>
+                  <span style={S.secCount}>{domains.summary.total} domains</span>
                 </div>
-                {domains.map((d, i) => {
-                  const isLast = i === domains.length - 1
-                  return (
-                    <div key={d.id} style={isLast ? S.rowLast : S.row}>
-                      <div style={S.rl}>
-                        <Dot status="ok" />
-                        <div>
-                          <div style={S.rname}>{d.domain}</div>
-                          {d.notes && <div style={S.rsub}>{d.notes}</div>}
-                        </div>
+                <div style={S.rowLast}>
+                  <div style={S.rl}>
+                    <Dot status={domains.summary.issues > 0 ? 'degraded' : 'ok'} />
+                    <div>
+                      <div style={S.rname}>
+                        {domains.summary.ok}/{domains.summary.total} fully configured
                       </div>
-                      <Badge status="ok" label="Configured" />
+                      <div style={S.rsub}>
+                        {domains.summary.issues > 0
+                          ? `${domains.summary.issues} domain${domains.summary.issues!==1?'s':''} with missing SPF/DKIM/DMARC/MX`
+                          : 'SPF · DKIM · DMARC · MX — all OK'}
+                      </div>
                     </div>
-                  )
-                })}
+                  </div>
+                  <Badge
+                    status={domains.summary.issues > 0 ? 'degraded' : 'ok'}
+                    label={domains.summary.issues > 0 ? `${domains.summary.issues} Issues` : 'All OK'} />
+                </div>
               </div>
             )}
 
