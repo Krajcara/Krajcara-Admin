@@ -299,6 +299,36 @@ export default function SettingsPage() {
         </div>
       </SettingsSection>
 
+      <SettingsSection title="TV Monitor">
+        <div className="space-y-4 max-w-lg">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Proxmox view mode
+            </label>
+            <div className="space-y-2">
+              {[
+                { value: 'cards',     label: 'Cards by node',    desc: 'VM kartice grupisane po nodu, 6 po redu' },
+                { value: 'table',     label: 'Table',            desc: 'Kompaktna tabela sa svim VM-ovima' },
+                { value: 'wallboard', label: 'NOC / Wallboard',  desc: 'Boja kartice mijenja se po statusu (zelena/žuta/crvena)' },
+              ].map(opt => (
+                <label key={opt.value} className="flex items-start gap-3 cursor-pointer p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                  <input type="radio" name="tv_proxmox_view"
+                    value={opt.value}
+                    checked={(settings.tv_proxmox_view || 'cards') === opt.value}
+                    onChange={() => setSettings(p => ({ ...p, tv_proxmox_view: opt.value }))}
+                    className="mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">{opt.label}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{opt.desc}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+          <Button loading={saving} onClick={() => save(['tv_proxmox_view'])}><Save className="w-4 h-4" />Save</Button>
+        </div>
+      </SettingsSection>
+
       <SettingsSection title="Email (SMTP)">
         <div className="space-y-4 max-w-lg">
           <div className="grid grid-cols-2 gap-4">
