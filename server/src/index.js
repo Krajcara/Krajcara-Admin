@@ -509,12 +509,34 @@ app.get('/api/dns/servers/public', async (req, res) => {
   } catch { res.json([]); }
 });
 
-// ── Public DNS domains (Status page) ────────────────────────────────────────
-app.get('/api/dns/domains/public', (req, res) => {
+// ── Public DNS domains with SPF/DKIM/DMARC check ────────────────────────────
+app.get('/api/dns/domains/public', async (req, res) => {
   try {
-    const rows = db.prepare('SELECT id, domain, notes FROM dns_domains ORDER BY domain').all();
-    res.json(rows);
-  } catch { res.json([]); }
+    const domains = db.prepare('SELECT id, domain, notes FROM dns_domains ORDER BY domain').all();
+    if (!domains.length) return res.json({ domains: [], summary: { total:0, ok:0, issues:0 } });
+    const dns = require('dns').promises;
+    const results = await Promise.all(domains.map(async d => {
+      let spf = false, dkim = false, dmarc = false, mx = false;
+      try {
+        const txts = (await dns.resolveTxt(d.domain)).flat();
+        spf  = txts.some(t => t.startsWith('v=spf1'));
+        const dm = (await dns.resolveTxt(`_dmarc.${d.domain}`).catch(()=>[])).flat();
+        dmarc = dm.some(t => t.startsWith('v=DMARC1'));
+        const mxr = await dns.resolveMx(d.domain).catch(()=>[]);
+        mx = mxr.length > 0;
+        for (const sel of ['selector1','selector2','default','google','k1','dkim','mail']) {
+          try {
+            const t = (await dns.resolveTxt(`${sel}._domainkey.${d.domain}`)).flat().join('');
+            if (t.includes('v=DKIM1')) { dkim = true; break; }
+          } catch {}
+        }
+      } catch {}
+      const score = [spf,dkim,dmarc,mx].filter(Boolean).length;
+      return { id:d.id, domain:d.domain, notes:d.notes, spf, dkim, dmarc, mx, score };
+    }));
+    const ok = results.filter(r => r.score === 4).length;
+    res.json({ domains: results, summary: { total: domains.length, ok, issues: domains.length - ok } });
+  } catch { res.json({ domains: [], summary: { total:0, ok:0, issues:0 } }); }
 });
 
 // ── Public settings (TV page, login page) ─────────────────────────────────────
