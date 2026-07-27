@@ -87,6 +87,7 @@ export default function StatusPage() {
   const [routers,    setRouters]    = useState([])
   const [routerPings,setRouterPings]= useState({})
   const [dns,        setDns]        = useState([])
+  const [domains,    setDomains]    = useState([])
   const [speed,      setSpeed]      = useState(null)
   const [proxmox,    setProxmox]    = useState(null)
   const [loading,    setLoading]    = useState(true)
@@ -94,10 +95,11 @@ export default function StatusPage() {
   const ref = useRef(null)
 
   const load = async () => {
-    const [mon, rtr, dnsData, spd, prx] = await Promise.allSettled([
+    const [mon, rtr, dnsData, domData, spd, prx] = await Promise.allSettled([
       fp('/api/monitors/public').catch(() => []),
       fp('/api/routers/public').catch(() => []),
       fp('/api/dns/servers/public').catch(() => []),
+      fp('/api/dns/domains/public').catch(() => []),
       fp('/api/netspeed/public').catch(() => null),
       fp('/api/proxmox/public').catch(() => null),
     ])
@@ -105,6 +107,7 @@ export default function StatusPage() {
     if (mon.status    === 'fulfilled') setMonitors(mon.value || [])
     if (rtr.status    === 'fulfilled') setRouters(rtrVal)
     if (dnsData.status=== 'fulfilled') setDns(dnsData.value || [])
+    if (domData.status=== 'fulfilled') setDomains(domData.value || [])
     if (spd.status    === 'fulfilled') setSpeed(spd.value)
     if (prx.status    === 'fulfilled') setProxmox(prx.value)
     setLastUpdate(new Date())
@@ -279,6 +282,59 @@ export default function StatusPage() {
                         )}
                         <Badge status={d.is_online ? 'ok' : 'down'} label={d.is_online ? 'Online' : 'Offline'} />
                       </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* 3b. DNS servers */}
+            {dns.length > 0 && (
+              <div style={S.section}>
+                <div style={S.secHdr}>
+                  <span style={S.secTitle}>DNS servers</span>
+                  <span style={S.secCount}>{dns.length} servers</span>
+                </div>
+                {dns.map((d, i) => {
+                  const isLast = i === dns.length - 1
+                  return (
+                    <div key={d.id} style={isLast ? S.rowLast : S.row}>
+                      <div style={S.rl}>
+                        <Dot status={d.is_online ? 'ok' : 'down'} />
+                        <div>
+                          <div style={S.rname}>
+                            {d.name}
+                            {d.role && <span style={{ fontSize:10, color: d.role==='primary'?'#58a6ff':'#6e7681', marginLeft:6, fontWeight:400 }}>{d.role.toUpperCase()}</span>}
+                          </div>
+                          <div style={S.rsub}>{d.type || 'DNS'} · {d.ip_address}</div>
+                        </div>
+                      </div>
+                      <Badge status={d.is_online ? 'ok' : 'down'} label={d.is_online ? 'Online' : 'Offline'} />
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* 3c. Domains */}
+            {domains.length > 0 && (
+              <div style={S.section}>
+                <div style={S.secHdr}>
+                  <span style={S.secTitle}>External domains</span>
+                  <span style={S.secCount}>{domains.length} domains</span>
+                </div>
+                {domains.map((d, i) => {
+                  const isLast = i === domains.length - 1
+                  return (
+                    <div key={d.id} style={isLast ? S.rowLast : S.row}>
+                      <div style={S.rl}>
+                        <Dot status="ok" />
+                        <div>
+                          <div style={S.rname}>{d.domain}</div>
+                          {d.notes && <div style={S.rsub}>{d.notes}</div>}
+                        </div>
+                      </div>
+                      <Badge status="ok" label="Configured" />
                     </div>
                   )
                 })}
