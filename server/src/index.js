@@ -492,9 +492,27 @@ app.get('/api/proxmox/public', async (req, res) => {
 });
 
 // ── Public DNS servers (Status page) ─────────────────────────────────────────
-app.get('/api/dns/servers/public', (req, res) => {
+app.get('/api/dns/servers/public', async (req, res) => {
   try {
-    const rows = db.prepare('SELECT id, name, type, ip_address, is_online FROM dns_servers ORDER BY name').all();
+    const servers = db.prepare('SELECT id, role, type, ip, label FROM dns_local ORDER BY role ASC').all();
+    // Ping each server to check if online
+    const axios  = require('axios');
+    const result = await Promise.all(servers.map(async s => {
+      let is_online = false;
+      try {
+        await axios.get(s.ip, { timeout: 4000, validateStatus: () => true });
+        is_online = true;
+      } catch {}
+      return { id: s.id, name: s.label || s.role, role: s.role, type: s.type, ip_address: s.ip, is_online };
+    }));
+    res.json(result);
+  } catch { res.json([]); }
+});
+
+// ── Public DNS domains (Status page) ────────────────────────────────────────
+app.get('/api/dns/domains/public', (req, res) => {
+  try {
+    const rows = db.prepare('SELECT id, domain, notes FROM dns_domains ORDER BY domain').all();
     res.json(rows);
   } catch { res.json([]); }
 });
