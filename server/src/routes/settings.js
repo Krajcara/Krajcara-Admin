@@ -28,10 +28,13 @@ function getSettings(maskSecrets = true) {
 // GET /api/settings
 router.get('/', requireAuth, (req, res) => res.json(getSettings()));
 
-// GET /api/settings/app — public (used by login page for app name)
+// GET /api/settings/app — public (used by login page and TV page)
 router.get('/app', (req, res) => {
-  const name = db.prepare("SELECT value FROM settings WHERE key='app_name'").get()?.value || 'Krajcara Admin';
-  res.json({ app_name: name });
+  const get = k => db.prepare("SELECT value FROM settings WHERE key=?").get(k)?.value;
+  res.json({
+    app_name:        get('app_name') || 'Krajcara Admin',
+    tv_proxmox_view: get('tv_proxmox_view') || 'cards',
+  });
 });
 
 // POST /api/settings/save
