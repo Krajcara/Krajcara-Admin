@@ -356,15 +356,35 @@ app.get('/api/tv/public', async (req, res) => {
                 }
               } catch {}
             }
+            // Disk: fsinfo for QEMU, direct for LXC
+            let diskUsed = 0, diskTotal = 0;
+            if (v.status === 'running') {
+              if (type === 'qemu') {
+                try {
+                  const fsi = await axios.get(`${url}/api2/json/nodes/${n.node}/qemu/${v.vmid}/agent/get-fsinfo`, { headers, httpsAgent, timeout: 8000 });
+                  const SKIP = new Set(['tmpfs','devtmpfs','cgroup','cgroup2','sysfs','proc','devpts','overlay','squashfs']);
+                  for (const fs of (fsi.data.data?.result || [])) {
+                    const tb = fs['total-bytes']||0, ub = fs['used-bytes']||0;
+                    if (!tb || SKIP.has((fs.type||'').toLowerCase())) continue;
+                    if (fs.mountpoint === '/' || !diskTotal) { diskTotal = tb; diskUsed = ub; }
+                  }
+                } catch {}
+              } else {
+                diskUsed = v.disk || 0;
+                diskTotal = v.maxdisk || 0;
+              }
+            }
+            const dPct = diskTotal > 0 ? Math.round((diskUsed / diskTotal) * 100) : 0;
             return {
               vmid: v.vmid, name: v.name || v.hostname, type, status: v.status,
               uptime: v.uptime || 0, ip, os,
               cpu_usage:   v.status === 'running' && v.cpu != null ? Math.round(v.cpu * 100) : 0,
               mem_usage:   v.status === 'running' && v.mem && v.maxmem ? Math.round((v.mem / v.maxmem) * 100) : 0,
-              disk_usage:  v.disk && v.maxdisk ? Math.round((v.disk / v.maxdisk) * 100) : 0,
+              disk_usage:  dPct,
+              disk_used_gb: diskTotal > 0 ? (diskUsed / 1073741824).toFixed(1) : null,
               mem_used_gb: v.mem    ? (v.mem    / 1073741824).toFixed(1) : '0',
               mem_max_gb:  v.maxmem ? (v.maxmem / 1073741824).toFixed(1) : '0',
-              disk_max_gb: v.maxdisk? (v.maxdisk/ 1073741824).toFixed(0) : '0',
+              disk_max_gb: diskTotal > 0 ? (diskTotal / 1073741824).toFixed(1) : (v.maxdisk ? (v.maxdisk / 1073741824).toFixed(0) : '0'),
             };
           };
 
