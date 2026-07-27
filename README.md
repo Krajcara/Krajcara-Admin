@@ -72,14 +72,27 @@ Stat cards (monitors up/down, Proxmox nodes), VM grid, DNS status, last speed te
 Public fullscreen dashboard at `/tv` — no login required, dark theme, auto-refresh every 30 seconds.
 Accessible via the monitor icon in the header.
 
-**Two tabs:**
-- **Overview** — Uptime Monitor status + Proxmox node cards + Network (routers/DNS) + Internet Speed + Alerts
-- **Proxmox** — Node summary bar + VM grid (6 per row) with CPU/RAM/Disk bars, OS, IP address
+Proxmox-only view. Three display modes selectable from **Settings → TV Monitor**:
+
+- **Cards** (default) — node summary bars + VM/LXC grid, 6 per row, with CPU/RAM/Disk bars, OS, IP
+- **Table** — compact table with all VMs: Node / Name / Type / Status / CPU / RAM / Disk / OS / IP
+- **NOC / Wallboard** — card background colour changes by status: green = OK, yellow ≥70%, red ≥90%, gray = stopped
+
+Setting is stored in the database (`tv_proxmox_view`) and read by the TV page without login.
 
 ### Status Page
 Public page at `/status` — no login required, dark theme, auto-refresh every 30 seconds.
 
-**Tabs:** Uptime Monitor (sparkline charts), Network (routers ping + speed stats), Proxmox (nodes with CPU/RAM/disk + storage), M365 Health (service status with active incidents)
+Single page, no tabs. Live clock in the top-right corner. Sections shown only if the relevant module is configured:
+
+- **Banner** — green "All systems operational", red with down count, or yellow for degraded
+- **Summary boxes** — Operational / Degraded / Down / Total count across all services
+- **Uptime monitors** — single summary row: `X / Y online`, all-up or down count badge
+- **Routers** — one row per router with ping status
+- **DNS servers** — one row per local DNS server (from `dns_local` table), Online/Offline badge
+- **External domains** — summary: `X / Y fully configured`, checks SPF / DKIM / DMARC / MX per domain
+- **Internet speed** — last measured Download / Upload / Ping with timestamp
+- **Proxmox** — one row per node with CPU% and RAM% bars, plus VMs/LXC running/stopped/total summary
 
 ### Inventory
 - **Licences** — vendor, seats (used/total), billing cycle, price/currency/tax, cost summary by currency, credentials (URL/user/pass/MFA), expiry warnings, Renew modal with suggested date
@@ -256,6 +269,8 @@ Email sent via M365 (Microsoft Graph) or SMTP fallback.
 | Daily 03:00  | Licence + Entra ID expiry notifications |
 | Daily 04:00  | Patch Management check |
 
+> DNS domain checks (SPF/DKIM/DMARC/MX) run on-demand when `/status` page loads — not on a schedule.
+
 ---
 
 ## Project structure
@@ -286,6 +301,21 @@ krajcara-admin/
 ---
 
 ## Changelog
+
+### Phase 13 — Status Page redesign
+- Status page completely rewritten — single page, no tabs
+- Live clock (top-right), overall banner, 4 summary stat boxes
+- Sections: Uptime monitors summary, Routers, DNS servers, External domains (SPF/DKIM/DMARC/MX check), Internet speed (last test), Proxmox nodes with CPU/RAM bars
+- New public endpoints: `/api/dns/servers/public` (pings `dns_local`), `/api/dns/domains/public` (SPF/DKIM/DMARC/MX check)
+- Fixed duplicate DNS section bug
+
+### Phase 12 — TV Monitor redesign
+- TV page completely rewritten — Proxmox only, no tabs
+- Three view modes switchable from Settings → TV Monitor: Cards (default), Table, NOC/Wallboard
+- Setting stored as `tv_proxmox_view` in settings table, read via public `/api/settings/app` endpoint
+- Wallboard: card background colour reflects VM health (green/yellow/red/gray)
+- Fixed disk display for QEMU VMs in TV endpoint (uses `agent/get-fsinfo`, skips virtual filesystems)
+- `/api/settings/app` now also returns `tv_proxmox_view` (registered before `requireAuth` in `index.js`)
 
 ### Phase 11 — Windows Servers / WinRM
 - **Windows Servers** module added to Infrastructure group
@@ -376,6 +406,8 @@ krajcara-admin/
 - ✅ **Phase 9**  — Servers & Scripts (web terminal, script runner)
 - ✅ **Phase 10** — Metrics history (CPU/RAM/disk trends per VM and node)
 - ✅ **Phase 11** — Windows Servers / WinRM (PowerShell, live metrics, script runner)
+- ✅ **Phase 12** — TV Monitor redesign (Proxmox only, 3 view modes, Settings-controlled)
+- ✅ **Phase 13** — Status Page redesign (single page, clock, DNS/domain checks, speed)
 
 ## License
 
