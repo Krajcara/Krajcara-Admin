@@ -130,7 +130,8 @@ export default function StatusPage() {
   const pxVMs       = pxNodes.reduce((a, n) => a + (n.vm_count || 0), 0)
   const pxRunning   = pxNodes.reduce((a, n) => a + (n.running || 0), 0)
 
-  const m365Services = m365?.configured ? (m365.services || []) : []
+  const M365_FILTER = new Set(['Exchange Online','SharePoint Online','Microsoft Intune','Microsoft OneDrive','Microsoft Teams','Microsoft Entra'])
+  const m365Services = m365?.configured ? (m365.services || []).filter(s => M365_FILTER.has(s.service)) : []
   const m365Ok      = m365Services.filter(s => m365Status(s) === 'ok').length
   const m365Issues  = m365Services.filter(s => m365Status(s) !== 'ok').length
 
