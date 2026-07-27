@@ -321,13 +321,175 @@ function VMCard({ vm }) {
 }
 
 // ── Proxmox Tab ───────────────────────────────────────────────────────────────
-function ProxmoxTab({ proxmox }) {
+function ProxmoxTab({ proxmox, viewMode = 'cards' }) {
   if (!proxmox?.configured) return (
     <div className="flex-1 flex items-center justify-center text-gray-500">Proxmox not configured</div>
   )
 
+  const allVMs = proxmox.nodes.flatMap(n =>
+    [...(n.vms||[]), ...(n.lxc||[])].map(v => ({ ...v, nodeName: n.node }))
+  ).sort((a,b) => (a.nodeName+a.name).localeCompare(b.nodeName+b.name))
+
+  // ── TABLE VIEW (Opcija A) ────────────────────────────────────────────────────
+  if (viewMode === 'table') return (
+    <div className="flex-1 flex flex-col gap-3 p-4 overflow-y-auto">
+      {/* Node summary */}
+      <div className="grid grid-cols-2 gap-3 flex-shrink-0">
+        {proxmox.nodes.map(node => (
+          <div key={node.node} className="bg-gray-900 rounded-xl border border-gray-800 px-4 py-2 flex items-center gap-4">
+            <span className={cn('w-3 h-3 rounded-full flex-shrink-0', node.status==='online'?'bg-green-500':'bg-red-500 animate-pulse')} />
+            <span className="font-bold text-white">{node.node}</span>
+            <span className="text-xs text-gray-500">{node.status} · {fmtUptime(node.uptime)}</span>
+            <div className="flex-1 flex gap-4">
+              {[{l:`CPU (${node.maxcpu}c)`,p:node.cpu_usage,c:'bg-blue-500'},{l:`RAM ${node.mem_used_gb}/${node.mem_max_gb}GB`,p:node.mem_usage,c:'bg-purple-500'}].map(s=>(
+                <div key={s.l} className="flex-1">
+                  <div className="flex justify-between text-xs text-gray-500 mb-0.5"><span>{s.l}</span><span>{s.p}%</span></div>
+                  <UsageBar pct={s.p} color={s.c} height="h-1.5" />
+                </div>
+              ))}
+            </div>
+            <span className="text-xs text-green-400 flex-shrink-0">{node.vm_running}/{node.vm_total} running</span>
+          </div>
+        ))}
+      </div>
+      {/* Table */}
+      <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden flex-1">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-gray-800 text-gray-500 uppercase tracking-wider">
+              <th className="px-3 py-2 text-left">Node</th>
+              <th className="px-3 py-2 text-left">Name</th>
+              <th className="px-3 py-2 text-left">Type</th>
+              <th className="px-3 py-2 text-left">Status</th>
+              <th className="px-3 py-2 text-left w-32">CPU</th>
+              <th className="px-3 py-2 text-left w-32">RAM</th>
+              <th className="px-3 py-2 text-left w-28">Disk</th>
+              <th className="px-3 py-2 text-left">OS</th>
+              <th className="px-3 py-2 text-left">IP</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-800/50">
+            {allVMs.map(vm => {
+              const isRunning = vm.status === 'running'
+              return (
+                <tr key={`${vm.type}-${vm.vmid}`} className={cn('hover:bg-gray-800/30', !isRunning && 'opacity-40')}>
+                  <td className="px-3 py-1.5 text-gray-500">{vm.nodeName}</td>
+                  <td className="px-3 py-1.5 font-medium text-white">{vm.name}</td>
+                  <td className="px-3 py-1.5">
+                    <span className={cn('px-1.5 py-0.5 rounded text-xs font-medium', vm.type==='lxc'?'bg-purple-900/50 text-purple-300':'bg-blue-900/50 text-blue-300')}>
+                      {vm.type==='lxc'?'LXC':'VM'}
+                    </span>
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <span className={cn('flex items-center gap-1', isRunning?'text-green-400':'text-gray-600')}>
+                      <span className={cn('w-1.5 h-1.5 rounded-full', isRunning?'bg-green-500':'bg-gray-600')} />
+                      {vm.status}
+                    </span>
+                  </td>
+                  <td className="px-3 py-1.5">
+                    {isRunning ? <div className="flex items-center gap-1.5"><UsageBar pct={vm.cpu_usage} color="bg-blue-500" height="h-1" /><span className="text-gray-400 w-8 text-right">{vm.cpu_usage}%</span></div> : <span className="text-gray-700">—</span>}
+                  </td>
+                  <td className="px-3 py-1.5">
+                    {isRunning ? <div className="flex items-center gap-1.5"><UsageBar pct={vm.mem_usage} color="bg-purple-500" height="h-1" /><span className="text-gray-400 w-8 text-right">{vm.mem_usage}%</span></div> : <span className="text-gray-700">—</span>}
+                  </td>
+                  <td className="px-3 py-1.5">
+                    {vm.disk_used_gb!=null ? <div className="flex items-center gap-1.5"><UsageBar pct={vm.disk_usage} color="bg-orange-500" height="h-1" /><span className="text-gray-400 w-8 text-right">{vm.disk_usage}%</span></div> : <span className="text-gray-700">—</span>}
+                  </td>
+                  <td className="px-3 py-1.5 text-gray-400">{vm.os||'—'}</td>
+                  <td className="px-3 py-1.5 font-mono text-gray-400">{vm.ip||'—'}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+
+  // ── WALLBOARD VIEW (Opcija D) ────────────────────────────────────────────────
+  if (viewMode === 'wallboard') return (
+    <div className="flex-1 flex flex-col gap-4 p-4 overflow-y-auto">
+      {/* Node summary */}
+      <div className="grid grid-cols-2 gap-3 flex-shrink-0">
+        {proxmox.nodes.map(node => (
+          <div key={node.node} className="bg-gray-900 rounded-xl border border-gray-800 px-4 py-2 flex items-center gap-4">
+            <span className={cn('w-3 h-3 rounded-full flex-shrink-0', node.status==='online'?'bg-green-500':'bg-red-500 animate-pulse')} />
+            <span className="font-bold text-white">{node.node}</span>
+            <div className="flex-1 flex gap-4">
+              {[{l:`CPU`,p:node.cpu_usage,c:'bg-blue-500'},{l:`RAM`,p:node.mem_usage,c:'bg-purple-500'}].map(s=>(
+                <div key={s.l} className="flex-1">
+                  <div className="flex justify-between text-xs text-gray-500 mb-0.5"><span>{s.l}</span><span>{s.p}%</span></div>
+                  <UsageBar pct={s.p} color={s.c} height="h-1.5" />
+                </div>
+              ))}
+            </div>
+            <span className="text-xs text-green-400 flex-shrink-0">{node.vm_running}/{node.vm_total}</span>
+          </div>
+        ))}
+      </div>
+      {/* Legend */}
+      <div className="flex items-center gap-4 text-xs text-gray-500 flex-shrink-0">
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-green-900/60 border border-green-700/50 inline-block" />OK</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-yellow-900/60 border border-yellow-700/50 inline-block" />Upozorenje (CPU/RAM &gt;70%)</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-900/60 border border-red-700/50 inline-block" />Kritično (&gt;90%)</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-gray-800 border border-gray-700 inline-block opacity-50" />Stopped</span>
+      </div>
+      {/* Wallboard grid per node */}
+      {proxmox.nodes.map(node => {
+        const all = [...(node.vms||[]),...(node.lxc||[])].sort((a,b)=>(a.name||'').localeCompare(b.name||''))
+        if (!all.length) return null
+        return (
+          <div key={node.node}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className={cn('w-2 h-2 rounded-full', node.status==='online'?'bg-green-500':'bg-red-500')} />
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{node.node}</span>
+            </div>
+            <div className="grid grid-cols-6 gap-2">
+              {all.map(vm => {
+                const isRunning = vm.status === 'running'
+                const maxVal    = Math.max(vm.cpu_usage||0, vm.mem_usage||0)
+                const borderCls = !isRunning ? 'border-gray-700 bg-gray-800/30 opacity-50'
+                  : maxVal >= 90 ? 'border-red-700/60 bg-red-900/20'
+                  : maxVal >= 70 ? 'border-yellow-700/60 bg-yellow-900/20'
+                  : 'border-green-700/40 bg-green-900/15'
+                return (
+                  <div key={`${vm.type}-${vm.vmid}`} className={cn('rounded-xl border p-2.5', borderCls)}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-semibold text-white truncate flex-1">{vm.name}</span>
+                      <span className={cn('text-xs px-1 py-0.5 rounded ml-1 flex-shrink-0 font-medium', vm.type==='lxc'?'bg-purple-900/60 text-purple-300':'bg-blue-900/60 text-blue-300')}>
+                        {vm.type==='lxc'?'LXC':'VM'}
+                      </span>
+                    </div>
+                    {isRunning ? (
+                      <div className="space-y-1">
+                        {[{l:'C',v:vm.cpu_usage,c:vm.cpu_usage>=90?'bg-red-500':vm.cpu_usage>=70?'bg-yellow-500':'bg-blue-500'},
+                          {l:'R',v:vm.mem_usage,c:vm.mem_usage>=90?'bg-red-500':vm.mem_usage>=70?'bg-yellow-500':'bg-purple-500'}].map(s=>(
+                          <div key={s.l} className="flex items-center gap-1">
+                            <span className="text-xs text-gray-600 w-3">{s.l}</span>
+                            <UsageBar pct={s.v} color={s.c} height="h-1" />
+                            <span className="text-xs text-gray-400 w-7 text-right">{s.v}%</span>
+                          </div>
+                        ))}
+                        <div className="flex justify-between pt-0.5 border-t border-gray-700/30">
+                          <span className="text-xs text-gray-500">{vm.os||'—'}</span>
+                          <span className="text-xs font-mono text-gray-400">{vm.ip||'—'}</span>
+                        </div>
+                      </div>
+                    ) : <div className="text-xs text-gray-600 text-center py-1">stopped</div>}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+
+  // ── CARDS VIEW (Opcija B — default) ─────────────────────────────────────────
   return (
     <div className="flex-1 flex flex-col gap-4 p-4 overflow-y-auto">
+
 
       {/* Nodes summary bar */}
       <div className="grid grid-cols-2 gap-3 flex-shrink-0">
@@ -392,11 +554,20 @@ export default function TVPage() {
   const [lastUpdated, setLastUpdated] = useState(null)
   const [error,       setError]       = useState(null)
   const [activeTab,   setActiveTab]   = useState('overview')
+  const [tvView,      setTvView]      = useState('cards')
   const intervalRef = useRef(null)
 
   const load = async () => {
     try {
-      const r = await fetch('/api/tv/public')
+      // Load TV view setting
+    try {
+      const sv = await fetch('/api/settings/app')
+      if (sv.ok) {
+        const sd = await sv.json()
+        if (sd.tv_proxmox_view) setTvView(sd.tv_proxmox_view)
+      }
+    } catch {}
+    const r = await fetch('/api/tv/public')
       const d = await r.json()
       setData(d)
       setLastUpdated(new Date())
@@ -471,7 +642,7 @@ export default function TVPage() {
       ) : (
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           {activeTab === 'overview' && <OverviewTab data={data} />}
-          {activeTab === 'proxmox'  && <ProxmoxTab proxmox={data?.proxmox} />}
+          {activeTab === 'proxmox'  && <ProxmoxTab proxmox={data?.proxmox} viewMode={tvView} />}
         </div>
       )}
 
