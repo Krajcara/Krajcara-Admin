@@ -36,14 +36,6 @@ const notifRoutes    = require('./routes/notifications');
 const ipspaceRoutes  = require('./routes/ipspace');
 const patchRoutes    = require('./routes/patches');
 const reportsRoutes  = require('./routes/reports');
-// Faza 1 — Servers & Scripts + Web Terminal
-const serversRoutes  = require('./routes/servers');
-const terminalRoutes = require('./routes/terminal');
-const { handleTerminalWS } = require('./routes/terminal');
-// Faza 2 — Metrics History
-const metricsRoutes  = require('./routes/metrics');
-// Faza 3 — Windows Servers / WinRM
-const winrmRoutes    = require('./routes/winrm');
 
 const axios = require('axios');
 
@@ -479,6 +471,15 @@ app.get('/api/proxmox/public', async (req, res) => {
   }
 });
 
+// ── Public settings (TV page, login page) ─────────────────────────────────────
+app.get('/api/settings/app', (req, res) => {
+  const get = k => db.prepare("SELECT value FROM settings WHERE key=?").get(k)?.value;
+  res.json({
+    app_name:        get('app_name') || 'Krajcara Admin',
+    tv_proxmox_view: get('tv_proxmox_view') || 'cards',
+  });
+});
+
 // ── Protected routes ──────────────────────────────────────────────
 app.use('/api/users',       requireAuth, usersRoutes);
 app.use('/api/settings',    requireAuth, settingsRoutes);
@@ -498,32 +499,12 @@ app.use('/api/notifications', requireAuth, notifRoutes);
 app.use('/api/ipspace',       requireAuth, ipspaceRoutes);
 app.use('/api/patches',       requireAuth, patchRoutes);
 app.use('/api/reports',       requireAuth, reportsRoutes);
-// Faza 1
-app.use('/api/servers',       requireAuth, serversRoutes);
-app.use('/api/terminal',      requireAuth, terminalRoutes);
-// Faza 2
-app.use('/api/metrics',       requireAuth, metricsRoutes);
-// Faza 3
-app.use('/api/winrm',         requireAuth, winrmRoutes);
 
 // ── Socket.io ─────────────────────────────────────────────────────
 io.on('connection', (socket) => {
   socket.on('disconnect', () => {});
 });
 global.io = io; // Make accessible to routes (update, monitorWorker);
-
-// ── WebSocket terminal (Faza 1) ───────────────────────────────────
-const ws = require('ws');
-const wss = new ws.Server({ noServer: true });
-server.on('upgrade', (request, socket, head) => {
-  if (request.url.startsWith('/ws/terminal')) {
-    wss.handleUpgrade(request, socket, head, wsClient => {
-      handleTerminalWS(wsClient, request, require('./db/database'));
-    });
-  } else {
-    socket.destroy();
-  }
-});
 
 // ── Frontend SPA (production) ─────────────────────────────────────
 if (process.env.NODE_ENV === 'production') {
