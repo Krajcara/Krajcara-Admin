@@ -135,8 +135,8 @@ export default function StatusPage() {
 
   const pxNodes     = proxmox?.configured ? (proxmox.nodes || []) : []
   const pxOnline    = pxNodes.filter(n => n.status === 'online').length
-  const pxVMs       = pxNodes.reduce((a, n) => a + (n.vm_total || 0), 0)
-  const pxRunning   = pxNodes.reduce((a, n) => a + (n.vm_running || 0), 0)
+  const pxVMs       = pxNodes.reduce((a, n) => a + (n.vm_count || 0), 0)
+  const pxRunning   = pxNodes.reduce((a, n) => a + (n.running || 0), 0)
 
   const allDown     = monDown + routers.filter(r => routerPings[r.id] === false).length +
                       dns.filter(d => !d.is_online).length +
@@ -330,7 +330,7 @@ export default function StatusPage() {
                         <div>
                           <div style={S.rname}>{n.node}</div>
                           <div style={S.rsub}>
-                            {n.vm_total} VMs · {n.vm_running} running · {n.status}
+                            {n.vm_count} VMs · {n.running} running · {n.status}
                           </div>
                         </div>
                       </div>
