@@ -491,6 +491,14 @@ app.get('/api/proxmox/public', async (req, res) => {
   }
 });
 
+// ── Public DNS servers (Status page) ─────────────────────────────────────────
+app.get('/api/dns/servers/public', (req, res) => {
+  try {
+    const rows = db.prepare('SELECT id, name, type, ip_address, is_online FROM dns_servers ORDER BY name').all();
+    res.json(rows);
+  } catch { res.json([]); }
+});
+
 // ── Public settings (TV page, login page) ─────────────────────────────────────
 app.get('/api/settings/app', (req, res) => {
   const get = k => db.prepare("SELECT value FROM settings WHERE key=?").get(k)?.value;
