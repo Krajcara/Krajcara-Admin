@@ -153,6 +153,13 @@ function VMCard({ vm, wallboard = false }) {
         </div>
       </div>
 
+      {/* Specs row: CPU cores · RAM GB · Disk GB */}
+      <div className="flex items-center gap-2 text-xs text-gray-600 font-mono">
+        {vm.maxcpu > 0 && <span>{vm.maxcpu}c</span>}
+        {vm.mem_max_gb > 0 && <><span className="text-gray-700">·</span><span>{vm.mem_max_gb}GB</span></>}
+        {vm.disk_max_gb > 0 && <><span className="text-gray-700">·</span><span>{vm.disk_max_gb}GB↗</span></>}
+      </div>
+
       {isRunning ? (
         <>
           <div className="space-y-1">
