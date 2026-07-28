@@ -510,6 +510,61 @@ app.get('/api/dns/servers/public', async (req, res) => {
   } catch { res.json([]); }
 });
 
+// ── Public Cloudflare zones summary ──────────────────────────────────────────
+app.get('/api/dns/cloudflare/public', async (req, res) => {
+  try {
+    const token  = db.prepare("SELECT value FROM settings WHERE key='cloudflare_api_token'").get()?.value;
+    const zoneId = db.prepare("SELECT value FROM settings WHERE key='cloudflare_zone_id'").get()?.value;
+    if (!token) return res.json({ configured: false });
+
+    const axios   = require('axios');
+    const dnsLib  = require('dns').promises;
+    const hdrs    = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+    const opts    = { timeout: 15000, family: 4 };
+
+    let zones = [];
+    if (zoneId) {
+      try {
+        const r = await axios.get(`https://api.cloudflare.com/client/v4/zones/${zoneId}`, { headers: hdrs, ...opts });
+        if (r.data.success) zones = [r.data.result];
+      } catch {}
+    }
+    if (!zones.length) {
+      const r = await axios.get('https://api.cloudflare.com/client/v4/zones?per_page=50&status=active', { headers: hdrs, ...opts });
+      if (!r.data.success) return res.json({ configured: true, domains: [], summary: { total:0, ok:0, issues:0 } });
+      zones = r.data.result || [];
+    }
+
+    const results = await Promise.all(zones.map(async z => {
+      const d = z.name;
+      const [mxR, txtR, dmarcR] = await Promise.allSettled([
+        dnsLib.resolveMx(d),
+        dnsLib.resolveTxt(d),
+        dnsLib.resolveTxt(`_dmarc.${d}`),
+      ]);
+      const txts   = txtR.status   === 'fulfilled' ? txtR.value.flat() : [];
+      const dmarcs = dmarcR.status === 'fulfilled' ? dmarcR.value.flat() : [];
+      const mx     = mxR.status    === 'fulfilled' && mxR.value.length > 0;
+      const spf    = txts.some(t => t.startsWith('v=spf1'));
+      const dmarc  = dmarcs.some(t => t.startsWith('v=DMARC1'));
+      let dkim = false;
+      for (const sel of ['default','selector1','selector2','google','k1','dkim','mail']) {
+        try {
+          const t = (await dnsLib.resolveTxt(`${sel}._domainkey.${d}`)).flat().join('');
+          if (t.includes('v=DKIM1')) { dkim = true; break; }
+        } catch {}
+      }
+      const score = [spf, dkim, dmarc, mx].filter(Boolean).length;
+      return { domain: d, spf, dkim, dmarc, mx, score };
+    }));
+
+    const ok = results.filter(r => r.score === 4).length;
+    res.json({ configured: true, domains: results, summary: { total: zones.length, ok, issues: zones.length - ok } });
+  } catch (e) {
+    res.json({ configured: false, error: e.message });
+  }
+});
+
 // ── Public DNS domains with SPF/DKIM/DMARC check ────────────────────────────
 app.get('/api/dns/domains/public', async (req, res) => {
   try {
