@@ -378,6 +378,7 @@ app.get('/api/tv/public', async (req, res) => {
             return {
               vmid: v.vmid, name: v.name || v.hostname, type, status: v.status,
               uptime: v.uptime || 0, ip, os,
+              maxcpu:      v.maxcpu || v.cpus || 0,
               cpu_usage:   v.status === 'running' && v.cpu != null ? Math.round(v.cpu * 100) : 0,
               mem_usage:   v.status === 'running' && v.mem && v.maxmem ? Math.round((v.mem / v.maxmem) * 100) : 0,
               disk_usage:  dPct,
