@@ -92,7 +92,7 @@ export default function StatusPage() {
       fp('/api/monitors/public').catch(() => []),
       fp('/api/routers/public').catch(() => []),
       fp('/api/dns/servers/public').catch(() => []),
-      fp('/api/dns/domains/public').catch(() => null),
+      fp('/api/dns/cloudflare/public').catch(() => null),
       fp('/api/netspeed/public').catch(() => null),
       fp('/api/proxmox/public').catch(() => null),
       fp('/api/m365/health/public').catch(() => null),
