@@ -33,7 +33,14 @@ if [ -z "$GITHUB_TOKEN" ]; then
     fi
   done
 fi
-[ -z "$GITHUB_TOKEN" ] && error "GitHub token required.\nUsage: sudo bash install.sh <GITHUB_TOKEN>"
+# For public repos no token needed — warn but continue
+if [ -z "$GITHUB_TOKEN" ]; then
+  warn "No GitHub token provided — using public (unauthenticated) access."
+  warn "For private repos: sudo bash install.sh <GITHUB_TOKEN>"
+  CLONE_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}.git"
+else
+  CLONE_URL="https://${GITHUB_TOKEN}@github.com/${REPO_OWNER}/${REPO_NAME}.git"
+fi
 
 echo ""
 echo "  ██╗  ██╗██████╗  █████╗      █████╗ ██████╗ ███╗   ███╗██╗███╗   ██╗"
@@ -47,16 +54,19 @@ info "Krajcara Admin Installer v${APP_VERSION}"
 echo ""
 
 # ─── Verify token ─────────────────────────────────────────────────────────────
-info "Verifying GitHub token..."
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-  -H "Authorization: token ${GITHUB_TOKEN}" \
+info "Verifying GitHub access..."
+if [ -n "$GITHUB_TOKEN" ]; then
+  AUTH_HEADER="-H \"Authorization: token ${GITHUB_TOKEN}\""
+else
+  AUTH_HEADER=""
+fi
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" $AUTH_HEADER \
   "https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}" \
   --max-time 15 2>/dev/null || echo "000")
-
 case "$HTTP_CODE" in
-  200) success "GitHub token valid — repository accessible" ;;
+  200) success "Repository accessible" ;;
   401) error "Invalid GitHub token (HTTP 401)." ;;
-  404) error "Repository not found (HTTP 404)." ;;
+  404) error "Repository not found — if private, provide a token." ;;
   000) error "Cannot reach GitHub. Check internet connection." ;;
   *)   warn "GitHub returned HTTP $HTTP_CODE — continuing..." ;;
 esac
@@ -147,7 +157,7 @@ NODE_ENV=production
 
 DB_PATH=${INSTALL_DIR}/data/krajcara-admin.db
 
-GITHUB_TOKEN=${GITHUB_TOKEN}
+GITHUB_TOKEN=${GITHUB_TOKEN:-}
 GITHUB_REPO=https://github.com/${REPO_OWNER}/${REPO_NAME}.git
 INSTALL_DIR=${INSTALL_DIR}
 
