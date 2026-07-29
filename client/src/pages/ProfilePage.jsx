@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Plus, Trash2, Eye, EyeOff, Copy, Check } from 'lucide-react'
+import { Plus, Trash2, Eye, EyeOff, Copy, Check, Monitor, Smartphone, Globe, LogOut, AlertTriangle } from 'lucide-react'
 import api from '../lib/api'
 import { useAuthStore } from '../store/authStore'
 import { Card, CardHeader, CardTitle, CardContent, Button, Input, AlertBox, Spinner, Modal } from '../components/shared/UI'
+import { cn } from '../lib/utils'
 import { formatDate } from '../lib/utils'
 
 // ── Change password section ───────────────────────────────────────
@@ -216,6 +217,112 @@ function ApiKeysSection() {
   )
 }
 
+
+// ── Active sessions ────────────────────────────────────────────────────────────
+function SessionsSection() {
+  const [sessions, setSessions]   = useState([])
+  const [loading,  setLoading]    = useState(true)
+  const [revoking, setRevoking]   = useState(null)
+  const [message,  setMessage]    = useState(null)
+
+  const load = () => {
+    setLoading(true)
+    api.get('/auth/sessions').then(r => setSessions(r.data)).finally(() => setLoading(false))
+  }
+  useEffect(() => { load() }, [])
+
+  const terminate = async (id) => {
+    setRevoking(id)
+    try {
+      await api.delete(`/auth/sessions/${id}`)
+      setSessions(p => p.filter(s => s.id !== id))
+      setMessage({ type: 'success', text: 'Session terminated' })
+    } catch (e) { setMessage({ type: 'error', text: e.response?.data?.error || 'Failed' }) }
+    finally { setRevoking(null) }
+  }
+
+  const terminateAll = async () => {
+    if (!window.confirm('Sign out all other devices?')) return
+    setRevoking('all')
+    try {
+      const r = await api.delete('/auth/sessions')
+      setSessions(p => p.filter(s => s.is_current))
+      setMessage({ type: 'success', text: `${r.data.terminated} other session${r.data.terminated !== 1 ? 's' : ''} terminated` })
+    } catch (e) { setMessage({ type: 'error', text: e.response?.data?.error || 'Failed' }) }
+    finally { setRevoking(null) }
+  }
+
+  const DeviceIcon = ({ hint }) => {
+    if (/mobile/i.test(hint)) return <Smartphone className="w-4 h-4" />
+    return <Monitor className="w-4 h-4" />
+  }
+
+  const fmtDate = (d) => d ? new Date(d + (d.endsWith('Z') ? '' : 'Z')).toLocaleString('en', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
+
+  const others = sessions.filter(s => !s.is_current)
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle>Active sessions</CardTitle>
+          {others.length > 0 && (
+            <Button variant="secondary" size="sm" loading={revoking === 'all'} onClick={terminateAll}>
+              <LogOut className="w-3.5 h-3.5" />Sign out all others
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {message && <AlertBox type={message.type} className="mb-4">{message.text}</AlertBox>}
+        {loading ? <div className="flex justify-center py-6"><Spinner className="w-5 h-5" /></div>
+        : !sessions.length ? <p className="text-sm text-gray-400 py-2">No active sessions</p>
+        : (
+          <div className="space-y-2">
+            {sessions.map(s => (
+              <div key={s.id} className={cn(
+                'flex items-center gap-3 p-3 rounded-lg border',
+                s.is_current
+                  ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                  : 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700'
+              )}>
+                <div className={cn('text-gray-400', s.is_current && 'text-green-600 dark:text-green-400')}>
+                  <DeviceIcon hint={s.device_hint || ''} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">
+                      {s.device_hint || 'Unknown device'}
+                    </p>
+                    {s.is_current && (
+                      <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-1.5 py-0.5 rounded font-medium">
+                        current
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-0.5 truncate">
+                    {s.ip_address || 'Unknown IP'} · Last seen {fmtDate(s.last_seen)}
+                  </p>
+                  <p className="text-xs text-gray-300 dark:text-gray-600 truncate mt-0.5">
+                    {(s.user_agent || '').slice(0, 80)}
+                  </p>
+                </div>
+                {!s.is_current && (
+                  <button onClick={() => terminate(s.id)} disabled={revoking === s.id}
+                    className="p-1.5 text-gray-400 hover:text-red-500 rounded transition-colors flex-shrink-0"
+                    title="Terminate session">
+                    {revoking === s.id ? <Spinner className="w-4 h-4" /> : <LogOut className="w-4 h-4" />}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // ── Main profile page ─────────────────────────────────────────────
 export default function ProfilePage() {
   const { user } = useAuthStore()
@@ -230,6 +337,7 @@ export default function ProfilePage() {
       <ChangePasswordSection />
       <TotpSection />
       <ApiKeysSection />
+      <SessionsSection />
     </div>
   )
 }
