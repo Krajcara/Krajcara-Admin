@@ -11,12 +11,11 @@ const { Server } = require('socket.io');
 const rateLimit  = require('express-rate-limit');
 
 const db         = require('./db/database');
-const { migrateEncryption } = require('./db/migrateEncryption');
 const { requireAuth } = require('./middleware/auth');
 const { autoAuditMiddleware } = require('./middleware/audit');
 const scheduler  = require('./scheduler');
 
-const authRoutes    = require('./routes/auth');
+const { router: authRoutes } = require('./routes/auth');
 const totpRoutes    = require('./routes/totp');
 const usersRoutes   = require('./routes/users');
 const settingsRoutes = require('./routes/settings');
@@ -137,6 +136,11 @@ app.get('/api/health', async (_req, res) => {
     services,
   });
 });
+// Cleanup expired sessions hourly
+setInterval(() => {
+  try { db.prepare("DELETE FROM sessions WHERE expires_at < datetime('now')").run(); } catch {}
+}, 3600000);
+
 app.use('/api/auth',        authRoutes);
 app.use('/api/totp',        totpRoutes);
 app.get('/api/settings/app', settingsRoutes);
@@ -510,9 +514,6 @@ app.get('/api/dns/servers/public', async (req, res) => {
     res.json(result);
   } catch { res.json([]); }
 });
-
-// ── Run encryption migration on startup ──────────────────────────────────────
-try { migrateEncryption(db); } catch (e) { console.error('[EncMigration] Failed:', e.message); }
 
 // ── Public Cloudflare zones summary ──────────────────────────────────────────
 app.get('/api/dns/cloudflare/public', async (req, res) => {
