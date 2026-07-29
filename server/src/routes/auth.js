@@ -108,6 +108,18 @@ router.post('/change-password', requireAuth, async (req, res) => {
 router.get('/sessions', requireAuth, (req, res) => {
   try {
     db.prepare("DELETE FROM sessions WHERE expires_at < datetime('now')").run();
+
+    // Auto-insert current session if it doesn't exist yet (e.g. login before this feature)
+    const exists = db.prepare('SELECT id FROM sessions WHERE jti = ?').get(req.token.jti);
+    if (!exists) {
+      const expiresAt = new Date(req.token.exp * 1000).toISOString();
+      const ua = req.headers['user-agent'] || null;
+      db.prepare(`
+        INSERT OR IGNORE INTO sessions (jti, user_id, ip_address, user_agent, device_hint, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(req.token.jti, req.user.id, req.ip || null, ua, deviceHint(ua), expiresAt);
+    }
+
     const sessions = db.prepare(`
       SELECT id, ip_address, user_agent, device_hint, created_at, last_seen, expires_at,
              jti = ? as is_current
