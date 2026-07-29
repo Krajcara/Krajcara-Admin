@@ -51,7 +51,9 @@ function start() {
   // Daily 03:00 — licence and entra expiry checks
   cron.schedule('0 3 * * *', () => {
     try {
-      const { runDailyNotificationChecks } = require('./services/notificationService');
+      const { runDailyNotificationChecks, checkSSLExpiry } = require('./services/notificationService');
+      const dbInst = require('./db/database');
+      checkSSLExpiry(dbInst);
       runDailyNotificationChecks().catch(e => console.error('[Scheduler] Daily notif error:', e.message));
     } catch (e) { console.error('[Scheduler] Daily notif init error:', e.message); }
   });
@@ -78,6 +80,14 @@ function start() {
       const { collectMetrics } = require('./services/metricsService');
       collectMetrics().catch(e => console.error('[Scheduler] Metrics error:', e.message));
     } catch (e) { console.error('[Scheduler] Metrics init error:', e.message); }
+  });
+
+  // Daily at 02:00 — SSL certificate check
+  cron.schedule('0 2 * * *', () => {
+    try {
+      const { checkAllSSL } = require('./services/sslService');
+      checkAllSSL().catch(e => console.error('[Scheduler] SSL check error:', e.message));
+    } catch (e) { console.error('[Scheduler] SSL init error:', e.message); }
   });
 
   console.log('[Scheduler] Started');
