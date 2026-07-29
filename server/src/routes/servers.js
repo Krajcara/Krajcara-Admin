@@ -1,5 +1,6 @@
 'use strict';
 const express    = require('express');
+const { encrypt, decrypt } = require('../services/encryptionService');
 const router     = express.Router();
 const db         = require('../db/database');
 const { requireAuth, requireRole } = require('../middleware/auth');
@@ -73,7 +74,9 @@ router.post('/', requireRole('superadmin', 'admin'), (req, res) => {
     INSERT INTO ssh_servers (name, ip_address, ssh_port, ssh_user, ssh_auth, ssh_password, ssh_key, ssh_passphrase, os_type, description, tags, group_name)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
   `).run(name, ip_address, ssh_port || 22, ssh_user, ssh_auth || 'password',
-    ssh_password || null, ssh_key || null, ssh_passphrase || null,
+    ssh_password ? encrypt(ssh_password) : null,
+    ssh_key ? encrypt(ssh_key) : null,
+    ssh_passphrase ? encrypt(ssh_passphrase) : null,
     os_type || 'linux', description || null,
     JSON.stringify(tags || []), group_name || null);
   res.status(201).json(omitKey(db.prepare('SELECT * FROM ssh_servers WHERE id=?').get(r.lastInsertRowid)));
@@ -92,7 +95,9 @@ router.put('/:id', requireRole('superadmin', 'admin'), (req, res) => {
   `).run(
     name||existing.name, ip_address||existing.ip_address, ssh_port||existing.ssh_port,
     ssh_user||existing.ssh_user, ssh_auth||existing.ssh_auth,
-    ssh_password||null, ssh_key||null, ssh_passphrase||null,
+    ssh_password ? encrypt(ssh_password) : null,
+    ssh_key ? encrypt(ssh_key) : null,
+    ssh_passphrase ? encrypt(ssh_passphrase) : null,
     os_type||existing.os_type, description??existing.description,
     JSON.stringify(tags||JSON.parse(existing.tags||'[]')),
     group_name??existing.group_name,
@@ -116,8 +121,8 @@ router.post('/:id/test', (req, res) => {
   const timeout = setTimeout(() => { conn.end(); res.json({ ok: false, error: 'Connection timeout (15s)' }); }, 15000);
 
   const sshOpts = { host: srv.ip_address, port: srv.ssh_port || 22, username: srv.ssh_user, readyTimeout: 14000 };
-  if (srv.ssh_key) { sshOpts.privateKey = srv.ssh_key; if (srv.ssh_passphrase) sshOpts.passphrase = srv.ssh_passphrase; }
-  else if (srv.ssh_password) sshOpts.password = srv.ssh_password;
+  if (srv.ssh_key) { sshOpts.privateKey = decrypt(srv.ssh_key); if (srv.ssh_passphrase) sshOpts.passphrase = decrypt(srv.ssh_passphrase); }
+  else if (srv.ssh_password) sshOpts.password = decrypt(srv.ssh_password);
 
   conn.on('ready', () => {
     clearTimeout(timeout);
