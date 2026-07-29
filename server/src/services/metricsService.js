@@ -1,5 +1,6 @@
 'use strict';
 const https  = require('https');
+const { decrypt } = require('./encryptionService');
 const axios  = require('axios');
 const db     = require('../db/database');
 
@@ -48,7 +49,8 @@ function getConfig() {
   const tid  = get('proxmox_token_id') || '';
   const sec  = get('proxmox_api_token');
   if (!url || !sec) return null;
-  return { url, token: tid ? `${user}!${tid}=${sec}` : sec };
+  const decSec = decrypt(sec);
+  return { url, token: tid ? `${user}!${tid}=${decSec}` : decSec };
 }
 
 async function pveGet(url, path, token) {
