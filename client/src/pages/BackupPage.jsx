@@ -20,14 +20,31 @@ function DownloadSection({ hasEnv }) {
   const [showPass,  setShowPass]  = useState(false)
   const [includeEnv, setInclude]  = useState(false)
 
-  const download = () => {
-    const url = includeEnv && password
-      ? `/api/backup/download?password=${encodeURIComponent(password)}`
-      : '/api/backup/download'
-    const a = document.createElement('a')
-    a.href = url
-    a.download = ''
-    a.click()
+  const [downloading, setDownloading] = useState(false)
+
+  const getToken = () => {
+    try { return JSON.parse(localStorage.getItem('krajcara-admin-auth')).state?.accessToken } catch { return '' }
+  }
+
+  const download = async () => {
+    setDownloading(true)
+    try {
+      const url = includeEnv && password
+        ? `/api/backup/download?password=${encodeURIComponent(password)}`
+        : '/api/backup/download'
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${getToken()}` } })
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || `HTTP ${res.status}`) }
+      const blob = await res.blob()
+      const cd   = res.headers.get('Content-Disposition') || ''
+      const name = cd.match(/filename="([^"]+)"/)?.[1] || `krajcara-admin-backup-${new Date().toISOString().split('T')[0]}.zip`
+      const a    = document.createElement('a')
+      a.href     = URL.createObjectURL(blob)
+      a.download = name
+      a.click()
+      URL.revokeObjectURL(a.href)
+    } catch (e) {
+      alert('Download failed: ' + e.message)
+    } finally { setDownloading(false) }
   }
 
   return (
@@ -95,7 +112,7 @@ function DownloadSection({ hasEnv }) {
         </div>
       )}
 
-      <Button onClick={download} disabled={includeEnv && !password}>
+      <Button onClick={download} loading={downloading} disabled={includeEnv && !password}>
         <Archive className="w-4 h-4" />
         Download backup{includeEnv && password ? ' (DB + .env)' : ' (DB only)'}
       </Button>
@@ -239,6 +256,25 @@ export default function BackupPage() {
     finally { setBacking(false) }
   }
 
+  const getToken = () => {
+    try { return JSON.parse(localStorage.getItem('krajcara-admin-auth')).state?.accessToken } catch { return '' }
+  }
+
+  const downloadSaved = async (name) => {
+    try {
+      const res = await fetch(`/api/backup/download-saved/${name}`, {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const blob = await res.blob()
+      const a    = document.createElement('a')
+      a.href     = URL.createObjectURL(blob)
+      a.download = name
+      a.click()
+      URL.revokeObjectURL(a.href)
+    } catch (e) { alert('Download failed: ' + e.message) }
+  }
+
   const deleteBackup = async (name) => {
     setDeleting(name)
     try { await api.delete(`/backup/${name}`); load() }
@@ -330,10 +366,10 @@ export default function BackupPage() {
                         <p className="text-xs text-gray-400 mt-0.5">{fmtSize(b.size)} · {new Date(b.created).toLocaleString('en')}</p>
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
-                        <a href={`/api/backup/download-saved/${b.name}`}
+                        <button onClick={() => downloadSaved(b.name)}
                           className="p-1.5 text-gray-400 hover:text-brand rounded transition-colors" title="Download">
                           <Download className="w-3.5 h-3.5" />
-                        </a>
+                        </button>
                         <button onClick={() => deleteBackup(b.name)} disabled={deleting === b.name}
                           className="p-1.5 text-gray-400 hover:text-red-500 rounded transition-colors" title="Delete">
                           {deleting === b.name ? <Spinner className="w-3.5 h-3.5" /> : <Trash2 className="w-3.5 h-3.5" />}
