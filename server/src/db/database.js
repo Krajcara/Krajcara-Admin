@@ -215,6 +215,22 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS sessions (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    jti          TEXT    NOT NULL UNIQUE,
+    user_id      INTEGER NOT NULL,
+    ip_address   TEXT,
+    user_agent   TEXT,
+    device_hint  TEXT,
+    created_at   TEXT    DEFAULT (datetime('now')),
+    expires_at   TEXT    NOT NULL,
+    last_seen    TEXT    DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id);
+  CREATE INDEX IF NOT EXISTS idx_sessions_jti  ON sessions (jti);
+`);
+
 // Cleanup old monitor checks (keep 7 days)
 try {
   db.prepare("DELETE FROM monitor_checks WHERE checked_at < datetime('now', '-7 days')").run();
