@@ -2,6 +2,19 @@
 
 Self-hosted IT Infrastructure Management application. Runs on Ubuntu Linux, port 3000.
 
+> **⚠️ Active development** — This application is fully functional and used in production, but development is ongoing. Features are added regularly. Feedback and suggestions welcome — open a [GitHub issue](https://github.com/krajcara/Krajcara-Admin/issues) or email [savuljesku@gmail.com](mailto:savuljesku@gmail.com).
+
+## Screenshots
+
+### System Status page
+![System Status](docs/screenshots/status.png)
+
+### Net Speed
+![Net Speed](docs/screenshots/netspeed.png)
+
+### Backup & Restore
+![Backup & Restore](docs/screenshots/backup.png)
+
 ## Installation
 
 **Public repo (no token needed):**
