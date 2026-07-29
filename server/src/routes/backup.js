@@ -328,7 +328,7 @@ router.post('/restore', (req, res) => {
       : 'Database restored. Server restarting...';
 
     res.json({ ok: true, message: msg, env_restored: !!envContent });
-    setTimeout(() => { console.log('[Backup] Restarting after restore...'); process.exit(0); }, 500);
+    setTimeout(() => { console.log('[Backup] Restarting after restore...'); process.exit(1); }, 500);
   });
 });
 
