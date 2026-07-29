@@ -43,6 +43,8 @@ function requireAuth(req, res, next) {
     if (!user) return res.status(401).json({ error: 'User not found or inactive' });
     req.user  = user;
     req.token = { jti: decoded.jti, exp: decoded.exp };
+    // Update last_seen for this session (fire and forget)
+    try { db.prepare("UPDATE sessions SET last_seen = datetime('now') WHERE jti = ?").run(decoded.jti); } catch {}
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid or expired token' });
