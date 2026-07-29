@@ -1,5 +1,6 @@
 const express = require('express');
 const router  = express.Router();
+const { encrypt, decrypt } = require('../services/encryptionService');
 const db      = require('../db/database');
 const { requireAuth } = require('../middleware/auth');
 const { writeAuditLog } = require('../middleware/audit');
