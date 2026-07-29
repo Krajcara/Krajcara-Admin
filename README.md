@@ -10,13 +10,35 @@ sudo bash install.sh <GITHUB_TOKEN>
 
 The installer will:
 1. Verify the token against GitHub
-2. Install Node.js 20 LTS (via nvm), `nmap`, and system packages
-3. Clone the repository to `/opt/krajcara-admin/`
-4. Install all server dependencies
-5. Build the frontend
-6. Install and start the systemd service
+2. Ask whether to install **Nginx as a reverse proxy with HTTPS** (optional)
+3. Install Node.js 20 LTS (via nvm), `nmap`, and system packages
+4. Clone the repository to `/opt/krajcara-admin/`
+5. Install all server dependencies
+6. Build the frontend
+7. Install and start the systemd service
 
 After installation: `http://SERVER_IP:3000` — admin credentials printed at the end.
+
+### Nginx / HTTPS (optional)
+
+During installation you will be asked:
+
+```
+Install Nginx? [y/N]:
+```
+
+If you choose **Y**, the installer will:
+- Ask for your domain or IP address
+- Install Nginx
+- Generate a self-signed SSL certificate (10 years)
+- Configure Nginx as a reverse proxy with HTTP → HTTPS redirect
+- WebSocket support for the web terminal included
+
+App will be accessible at `https://YOUR_DOMAIN` (port 443).
+
+> **Note:** Browser will show an SSL warning for self-signed certificates.  
+> Click Advanced → Proceed to accept.  
+> To use a trusted certificate, replace the files at `/etc/nginx/ssl/krajcara-admin/`.
 
 ## Updating
 
@@ -206,7 +228,12 @@ Supports Basic auth over HTTP (suitable for internal VPN/intranet networks only)
   | `UserAuthenticationMethod.Read.All` | MFA registration per user |
   | `Mail.Send` | Email notifications (optional) |
 
-- **Backup** — superadmin only; manual + automatic daily backup at 03:00; download DB; restore from file
+- **Backup** — superadmin only; full backup as ZIP containing database + encrypted `.env`; restore from ZIP or legacy `.db` file; automatic pre-restore backup; daily auto-backup at 03:00
+
+**Backup workflow for server migration:**
+1. Download a ZIP backup with encrypted `.env` (enter a password)
+2. On new server: run `install.sh`, then Backup → Restore → select ZIP → enter password
+3. Server restarts automatically with all data and configuration restored
 
 ### Admin
 - **Users** — create/edit/deactivate; roles assignment
@@ -216,8 +243,9 @@ Supports Basic auth over HTTP (suitable for internal VPN/intranet networks only)
 - **Settings** — app name, SMTP/M365 email, per-module email controls, data retention, system update
 
 ### Account
-- **Profile** — change password, TOTP (Google Authenticator), personal API keys
+- **Profile** — change password, TOTP (Google Authenticator), personal API keys, **active sessions**
 - **Two-factor authentication** — TOTP compatible, 8 backup codes
+- **Active sessions** — list of all active login sessions with device type, IP address and last seen timestamp; terminate any session individually or sign out all other devices at once
 
 ---
 
@@ -234,6 +262,9 @@ Supports Basic auth over HTTP (suitable for internal VPN/intranet networks only)
 | Proxmox | VM possibly frozen (CPU ≥ 80% + dark console) | Every 3 min |
 | Licences | Expiring / expired | Daily at 03:00 |
 | Entra ID | Secret expiring / expired | Daily at 03:00 |
+| Monitors | SSL certificate expiring (≤30 days) | Daily at 02:00 |
+| Monitors | SSL certificate expiring (≤7 days) | Daily at 02:00 |
+| Monitors | SSL certificate expired | Daily at 02:00 |
 
 ### VM Health Monitoring (Frozen VM Detection)
 
@@ -265,6 +296,7 @@ Email sent via M365 (Microsoft Graph) or SMTP fallback.
 | Every 5 min  | Collect VM/node metrics (CPU/RAM/disk) |
 | Every 15 min | Notification checks (monitors/routers/DNS/Proxmox) |
 | Every hour   | Net speed test |
+| Daily 02:00  | SSL certificate expiry check for all HTTPS monitors |
 | Daily 03:00  | Cleanup (tokens, audit log retention, auto-backup) |
 | Daily 03:00  | Licence + Entra ID expiry notifications |
 | Daily 04:00  | Patch Management check |
@@ -292,7 +324,7 @@ krajcara-admin/
 │       ├── routes/      API handlers
 │       └── services/    Monitor worker, nmap, scan, notification, patch,
 │                        terminal, script runner, VM health, metrics,
-│                        WinRM services
+│                        WinRM, SSL checker, encryption services
 ├── install.sh           First-time installer
 ├── update.sh            Updater
 └── krajcara-admin.service  systemd service
@@ -301,6 +333,37 @@ krajcara-admin/
 ---
 
 ## Changelog
+
+### Phase 18 — Faza B: Nginx / HTTPS
+- `install.sh` updated — interactive prompt to install Nginx as reverse proxy
+- Self-signed SSL certificate generated automatically (10 years, RSA 2048)
+- Nginx config: HTTP → HTTPS redirect, WebSocket support for terminal, security headers
+- SSL cert path: `/etc/nginx/ssl/krajcara-admin/` (replaceable with trusted cert)
+
+### Phase 17 — Faza G: SSL monitoring, Dashboard widgets, PWA
+- **SSL certificate monitoring** — daily check of all HTTPS monitors; warning ≤30 days, error ≤7 days
+- **Dashboard widgets** — Expiring licences widget + SSL certificates widget (auto-shown when relevant)
+- **PWA** — `manifest.json`, service worker (`sw.js`), installable on desktop and mobile
+- New service: `sslService.js`; new DB columns: `ssl_days`, `ssl_expiry`, `ssl_error` on `monitors`
+
+### Phase 16 — Faza D: Session management
+- New `sessions` DB table — tracks active login sessions per user
+- Sessions created on login, deleted on logout, last_seen updated on every request
+- **Profile → Active sessions** — device type, IP, last seen, terminate individual or all other sessions
+- Expired sessions cleaned up hourly
+
+### Phase 15 — Faza A: Encryption of sensitive fields
+- New `encryptionService.js` — AES-256-GCM, key derived from `APP_SECRET`
+- Auto-migration on startup encrypts all existing plain-text values
+- Encrypted fields: SSH passwords/keys, WinRM passwords, licence passwords, Entra client secrets, SNMP passwords, DNS API keys, Proxmox/Cloudflare/M365/SMTP tokens in settings
+- Format in DB: `enc:v1:<base64>` — backward compatible with plain-text values
+
+### Phase 14 — Faza C: Backup v2
+- Backup now downloads a **ZIP** file containing `krajcara-admin.db` + `env.enc` (AES-256-GCM encrypted `.env`)
+- Restore supports ZIP (with optional `.env` decryption) and legacy `.db` files
+- Pre-restore auto-backup always created before any restore
+- Server auto-restarts after restore (exit code 1 triggers systemd restart)
+- Download uses `fetch` with JWT auth token (fixes "Needs authorization" error)
 
 ### Phase 13 — Status Page redesign
 - Status page completely rewritten — single page, no tabs
@@ -408,6 +471,11 @@ krajcara-admin/
 - ✅ **Phase 11** — Windows Servers / WinRM (PowerShell, live metrics, script runner)
 - ✅ **Phase 12** — TV Monitor redesign (Proxmox only, 3 view modes, Settings-controlled)
 - ✅ **Phase 13** — Status Page redesign (single page, clock, DNS/domain checks, speed)
+- ✅ **Phase 14** — Backup v2 (ZIP + encrypted .env, pre-restore backup, auto-restart)
+- ✅ **Phase 15** — Encryption of sensitive fields (AES-256-GCM, auto-migration)
+- ✅ **Phase 16** — Session management (active sessions, terminate, sign out all)
+- ✅ **Phase 17** — SSL monitoring, Dashboard widgets, PWA
+- ✅ **Phase 18** — Nginx / HTTPS optional install
 
 ## License
 
