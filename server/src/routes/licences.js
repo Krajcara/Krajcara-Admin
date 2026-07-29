@@ -32,9 +32,10 @@ function calcTotals(licences) {
 function mapLicence(l) {
   return {
     ...l,
-    vendor:       clean(l.vendor),
-    licence_type: clean(l.licence_type),
-    assigned_to:  l.assigned_to  ? JSON.parse(l.assigned_to)  : [],
+    vendor:        clean(l.vendor),
+    licence_type:  clean(l.licence_type),
+    assigned_to:   l.assigned_to ? JSON.parse(l.assigned_to) : [],
+    licence_password: l.licence_password ? decrypt(l.licence_password) : null,
   };
 }
 
@@ -117,7 +118,7 @@ router.put('/:id', (req, res) => {
 
   // Only update password if a real new value was provided (not blank, not placeholder)
   const newPass = licence_password && licence_password !== '***' && licence_password !== ''
-    ? licence_password
+    ? encrypt(licence_password)
     : existing.licence_password;
 
   db.prepare(`
@@ -206,7 +207,7 @@ router.post('/entra-apps', (req, res) => {
   const r = db.prepare(`
     INSERT INTO entra_apps (app_name, app_id, client_secret, secret_expiry, assigned_to, project, notes)
     VALUES (?,?,?,?,?,?,?)
-  `).run(app_name.trim(), app_id || null, client_secret || null, secret_expiry || null, assigned_to || null, project || null, notes || null);
+  `).run(app_name.trim(), app_id || null, client_secret ? encrypt(client_secret) : null, secret_expiry || null, assigned_to || null, project || null, notes || null);
   writeAuditLog({ userId: req.user.id, username: req.user.username, action: 'create', module: 'licences', entityId: r.lastInsertRowid, entityName: `Entra: ${app_name}`, ip: req.ip, userAgent: req.headers['user-agent'] });
   res.json({ id: r.lastInsertRowid, ok: true });
 });
@@ -219,7 +220,7 @@ router.put('/entra-apps/:id', (req, res) => {
   if (!app_name?.trim()) return res.status(400).json({ error: 'app_name is required' });
   // Keep existing secret if new one is blank or placeholder
   const newSecret = (client_secret && client_secret !== '***' && client_secret !== '')
-    ? client_secret
+    ? encrypt(client_secret)
     : existing.client_secret;
   db.prepare(`
     UPDATE entra_apps SET app_name=?, app_id=?, client_secret=?, secret_expiry=?,
@@ -244,7 +245,7 @@ router.post('/entra-apps/:id/reveal', (req, res) => {
   const a = db.prepare('SELECT client_secret FROM entra_apps WHERE id = ?').get(req.params.id);
   if (!a) return res.status(404).json({ error: 'Not found' });
   writeAuditLog({ userId: req.user.id, username: req.user.username, action: 'update', module: 'licences', entityId: req.params.id, entityName: 'Entra secret revealed', ip: req.ip, userAgent: req.headers['user-agent'] });
-  res.json({ secret: a.client_secret });
+  res.json({ secret: decrypt(a.client_secret) });
 });
 
 // POST /api/licences/entra-apps/:id/toggle-hidden
