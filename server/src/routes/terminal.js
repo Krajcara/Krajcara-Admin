@@ -1,5 +1,6 @@
 'use strict';
 const express = require('express');
+const { decrypt } = require('../services/encryptionService');
 const router  = express.Router();
 const db      = require('../db/database');
 const { requireAuth } = require('../middleware/auth');
@@ -63,10 +64,10 @@ async function handleTerminalWS(ws, req, db) {
   };
 
   if (srv.ssh_key) {
-    sshConfig.privateKey = srv.ssh_key;
-    if (srv.ssh_passphrase) sshConfig.passphrase = srv.ssh_passphrase;
+    sshConfig.privateKey = decrypt(srv.ssh_key);
+    if (srv.ssh_passphrase) sshConfig.passphrase = decrypt(srv.ssh_passphrase);
   } else if (srv.ssh_password) {
-    sshConfig.password = srv.ssh_password;
+    sshConfig.password = decrypt(srv.ssh_password);
   }
 
   try {
