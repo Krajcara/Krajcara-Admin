@@ -4,12 +4,20 @@ Self-hosted IT Infrastructure Management application. Runs on Ubuntu Linux, port
 
 ## Installation
 
+**Public repo (no token needed):**
+```bash
+git clone https://github.com/krajcara/Krajcara-Admin.git
+cd Krajcara-Admin
+sudo bash install.sh
+```
+
+**Private repo (token required):**
 ```bash
 sudo bash install.sh <GITHUB_TOKEN>
 ```
 
 The installer will:
-1. Verify the token against GitHub
+1. Verify GitHub access
 2. Ask whether to install **Nginx as a reverse proxy with HTTPS** (optional)
 3. Install Node.js 20 LTS (via nvm), `nmap`, and system packages
 4. Clone the repository to `/opt/krajcara-admin/`
@@ -18,6 +26,11 @@ The installer will:
 7. Install and start the systemd service
 
 After installation: `http://SERVER_IP:3000` — admin credentials printed at the end.
+
+**Switching from private to public repo on an existing install:**
+```bash
+git -C /opt/krajcara-admin remote set-url origin https://github.com/krajcara/Krajcara-Admin.git
+```
 
 ### Nginx / HTTPS (optional)
 
@@ -334,6 +347,11 @@ krajcara-admin/
 
 ## Changelog
 
+### Phase 19 — Faza F: Public repo support
+- `install.sh` — GitHub token is now optional; public repos install without a token
+- `update.sh` — token optional; GitHub API and `git pull` work without authentication
+- For existing installs: update git remote URL to public URL if moving from private to public repo
+
 ### Phase 18 — Faza B: Nginx / HTTPS
 - `install.sh` updated — interactive prompt to install Nginx as reverse proxy
 - Self-signed SSL certificate generated automatically (10 years, RSA 2048)
@@ -476,6 +494,18 @@ krajcara-admin/
 - ✅ **Phase 16** — Session management (active sessions, terminate, sign out all)
 - ✅ **Phase 17** — SSL monitoring, Dashboard widgets, PWA
 - ✅ **Phase 18** — Nginx / HTTPS optional install
+- ✅ **Phase 19** — Public repo support (token optional in install.sh and update.sh)
+
+## Contributing
+
+Found a bug or have a suggestion? You're welcome to:
+
+- **Open a GitHub issue** — [github.com/krajcara/Krajcara-Admin/issues](https://github.com/krajcara/Krajcara-Admin/issues)
+- **Send an email** — [savuljesku@gmail.com](mailto:savuljesku@gmail.com)
+
+Pull requests are welcome for bug fixes and improvements.
+
+---
 
 ## License
 
