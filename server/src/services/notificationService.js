@@ -375,4 +375,38 @@ function checkLicenceExpiry() {
   }
 }
 
+
+// ── SSL certificate expiry check ─────────────────────────────────────────────
+function checkSSLExpiry(db) {
+  const monitors = db.prepare(
+    "SELECT id, label, target, ssl_days, ssl_expiry FROM monitors WHERE enabled=1 AND ssl_days IS NOT NULL"
+  ).all();
+
+  for (const m of monitors) {
+    const days = m.ssl_days;
+    if (days <= 0) {
+      createNotification(db, {
+        type: 'error', module: 'monitors',
+        title: `SSL certificate expired: ${m.label}`,
+        message: `SSL cert for ${m.target} expired ${Math.abs(days)} day${Math.abs(days) !== 1 ? 's' : ''} ago.`,
+        entityId: m.id, entityName: m.label,
+      });
+    } else if (days <= 7) {
+      createNotification(db, {
+        type: 'error', module: 'monitors',
+        title: `SSL certificate expires in ${days} days: ${m.label}`,
+        message: `SSL cert for ${m.target} expires on ${new Date(m.ssl_expiry).toLocaleDateString('en')}. Renew immediately.`,
+        entityId: m.id, entityName: m.label,
+      });
+    } else if (days <= 30) {
+      createNotification(db, {
+        type: 'warning', module: 'monitors',
+        title: `SSL certificate expires in ${days} days: ${m.label}`,
+        message: `SSL cert for ${m.target} expires on ${new Date(m.ssl_expiry).toLocaleDateString('en')}.`,
+        entityId: m.id, entityName: m.label,
+      });
+    }
+  }
+}
+
 module.exports = { createNotification, runNotificationChecks, runDailyNotificationChecks, checkRouters, checkDnsServers, checkProxmoxVMs, checkLicenceExpiry };
