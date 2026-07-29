@@ -37,8 +37,8 @@ router.post('/', requireRole('superadmin', 'admin'), (req, res) => {
     name.trim(), brand || 'other', model || null, ip_address.trim(),
     username || null, password || null, notes || null,
     snmp_version || '2c', snmp_community || 'public', parseInt(snmp_port) || 161,
-    snmp_username || null, snmp_auth_protocol || 'SHA', snmp_auth_password || null,
-    snmp_priv_protocol || 'AES', snmp_priv_password || null, snmp_security_level || 'authPriv'
+    snmp_username || null, snmp_auth_protocol || 'SHA', snmp_auth_password ? encrypt(snmp_auth_password) : null,
+    snmp_priv_protocol || 'AES', snmp_priv_password ? encrypt(snmp_priv_password) : null, snmp_security_level || 'authPriv'
   );
 
   writeAuditLog({ userId: req.user.id, username: req.user.username, action: 'create', module: 'routers', entityId: r.lastInsertRowid, entityName: name, ip: req.ip, userAgent: req.headers['user-agent'] });
@@ -58,8 +58,8 @@ router.put('/:id', requireRole('superadmin', 'admin'), (req, res) => {
 
   // Only update password if a real new value was provided
   const newPass = password && password.trim() && password !== '***' ? password : existing.password_encrypted;
-  const newSnmpAuth = snmp_auth_password && snmp_auth_password !== '***' ? snmp_auth_password : existing.snmp_auth_password;
-  const newSnmpPriv = snmp_priv_password && snmp_priv_password !== '***' ? snmp_priv_password : existing.snmp_priv_password;
+  const newSnmpAuth = snmp_auth_password && snmp_auth_password !== '***' ? encrypt(snmp_auth_password) : existing.snmp_auth_password;
+  const newSnmpPriv = snmp_priv_password && snmp_priv_password !== '***' ? encrypt(snmp_priv_password) : existing.snmp_priv_password;
 
   db.prepare(`
     UPDATE routers SET
@@ -119,9 +119,9 @@ router.get('/:id/stats', async (req, res) => {
     snmp_port:           r.snmp_port           || 161,
     snmp_username:       r.snmp_username       || '',
     snmp_auth_protocol:  r.snmp_auth_protocol  || 'SHA',
-    snmp_auth_password:  r.snmp_auth_password  || '',
+    snmp_auth_password:  decrypt(r.snmp_auth_password) || '',
     snmp_priv_protocol:  r.snmp_priv_protocol  || 'AES',
-    snmp_priv_password:  r.snmp_priv_password  || '',
+    snmp_priv_password:  decrypt(r.snmp_priv_password) || '',
     snmp_security_level: r.snmp_security_level || 'authPriv',
     model: r.model,
   };
