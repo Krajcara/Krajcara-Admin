@@ -1,13 +1,12 @@
-import { AlertTriangle, ShieldAlert, useState, useEffect, useCallback } from 'react'
 import {
   AlertTriangle, ShieldAlert, Activity, Server, KeyRound, AppWindow,
   RefreshCw, Wifi, WifiOff, Download, Upload, CheckCircle, Globe,
-  AlertCircle, AlertTriangle, Info, Bell
+  AlertCircle, Info, Bell
 } from 'lucide-react'
-import { AlertTriangle, ShieldAlert, Card, CardHeader, CardTitle, Spinner, Badge } from '../components/shared/UI'
-import { AlertTriangle, ShieldAlert, cn, timeAgo } from '../lib/utils'
+import { Card, CardHeader, CardTitle, Spinner, Badge } from '../components/shared/UI'
+import { cn, timeAgo } from '../lib/utils'
 import api from '../lib/api'
-import { AlertTriangle, ShieldAlert, useSocket } from '../hooks/useSocket'
+import { useSocket } from '../hooks/useSocket'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtVal(v, d = 1) {
