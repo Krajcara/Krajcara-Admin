@@ -215,21 +215,14 @@ db.exec(`
   );
 `);
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS sessions (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    jti          TEXT    NOT NULL UNIQUE,
-    user_id      INTEGER NOT NULL,
-    ip_address   TEXT,
-    user_agent   TEXT,
-    device_hint  TEXT,
-    created_at   TEXT    DEFAULT (datetime('now')),
-    expires_at   TEXT    NOT NULL,
-    last_seen    TEXT    DEFAULT (datetime('now'))
-  );
-  CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id);
-  CREATE INDEX IF NOT EXISTS idx_sessions_jti  ON sessions (jti);
-`);
+// Add SSL columns to monitors if not present
+for (const col of [
+  "ALTER TABLE monitors ADD COLUMN ssl_expiry TEXT",
+  "ALTER TABLE monitors ADD COLUMN ssl_days INTEGER",
+  "ALTER TABLE monitors ADD COLUMN ssl_error TEXT",
+]) {
+  try { db.prepare(col).run(); } catch {}
+}
 
 // Cleanup old monitor checks (keep 7 days)
 try {
