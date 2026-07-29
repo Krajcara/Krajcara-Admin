@@ -8,6 +8,13 @@ const SECRET_KEYS = [
   'smtp_pass', 'app_secret_display'
 ];
 
+
+// Keys that are stored encrypted
+const SENSITIVE_KEYS = new Set([
+  'proxmox_api_token', 'cloudflare_api_token',
+  'm365_client_secret', 'smtp_pass',
+]);
+
 const ALL_KEYS = [
   'app_name', 'github_repo',
   'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from', 'smtp_secure',
@@ -19,7 +26,8 @@ function getSettings(maskSecrets = true) {
   const rows = db.prepare('SELECT key, value FROM settings').all();
   const s = {};
   rows.forEach(r => {
-    s[r.key] = (maskSecrets && SECRET_KEYS.includes(r.key) && r.value) ? '***' : r.value;
+    const rawVal = SENSITIVE_KEYS.has(r.key) && r.value ? decrypt(r.value) : r.value;
+    s[r.key] = (maskSecrets && SECRET_KEYS.includes(r.key) && rawVal) ? '***' : rawVal;
   });
   if (!s.app_name) s.app_name = 'Krajcara Admin';
   return s;
@@ -44,7 +52,8 @@ router.post('/save', requireAuth, requireRole('superadmin', 'admin'), (req, res)
     for (const [key, val] of Object.entries(req.body)) {
       if (!ALL_KEYS.includes(key)) continue;
       if (val === '***' || val === null || val === undefined) continue;
-      stmt.run(key, val === '' ? null : String(val));
+      const storeVal = SENSITIVE_KEYS.has(key) && val && val !== '' ? encrypt(String(val)) : (val === '' ? null : String(val));
+      stmt.run(key, storeVal);
     }
   })();
   res.json({ ok: true });
