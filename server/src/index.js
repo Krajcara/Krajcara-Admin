@@ -11,6 +11,7 @@ const { Server } = require('socket.io');
 const rateLimit  = require('express-rate-limit');
 
 const db         = require('./db/database');
+const { migrateEncryption } = require('./db/migrateEncryption');
 const { requireAuth } = require('./middleware/auth');
 const { autoAuditMiddleware } = require('./middleware/audit');
 const scheduler  = require('./scheduler');
@@ -510,6 +511,9 @@ app.get('/api/dns/servers/public', async (req, res) => {
   } catch { res.json([]); }
 });
 
+// ── Run encryption migration on startup ──────────────────────────────────────
+try { migrateEncryption(db); } catch (e) { console.error('[EncMigration] Failed:', e.message); }
+
 // ── Public Cloudflare zones summary ──────────────────────────────────────────
 app.get('/api/dns/cloudflare/public', async (req, res) => {
   try {
@@ -619,24 +623,6 @@ app.use('/api/scanner',     requireAuth, scannerRouter);
 app.use('/api/netspeed',    requireAuth, netspeedRoutes.router);
 app.use('/api/m365',       requireAuth, m365Routes);
 app.use('/api/backup',     requireAuth, backupRouter);
-
-// Download a specific saved backup file
-app.get('/api/backup/download-saved/:name', requireAuth, (req, res) => {
-  try {
-    const { requireRole } = require('./middleware/auth');
-    const path = require('path');
-    const fs   = require('fs');
-    const DB_PATH    = process.env.DB_PATH || path.join(__dirname, '../../data/krajcara-admin.db');
-    const BACKUP_DIR = path.join(path.dirname(DB_PATH), 'backups');
-    const name = path.basename(req.params.name);
-    if (!name.endsWith('.db') && !name.endsWith('.zip')) return res.status(400).json({ error: 'Invalid filename' });
-    const fp = path.join(BACKUP_DIR, name);
-    if (!fs.existsSync(fp)) return res.status(404).json({ error: 'Not found' });
-    res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
-    res.setHeader('Content-Type', name.endsWith('.zip') ? 'application/zip' : 'application/octet-stream');
-    fs.createReadStream(fp).pipe(res);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
 app.use('/api/notifications', requireAuth, notifRoutes);
 app.use('/api/ipspace',       requireAuth, ipspaceRoutes);
 app.use('/api/patches',       requireAuth, patchRoutes);
