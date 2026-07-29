@@ -1,6 +1,5 @@
 'use strict';
 const express = require('express');
-const { decrypt } = require('../services/encryptionService');
 const router  = express.Router();
 const db      = require('../db/database');
 const { requireAuth } = require('../middleware/auth');
@@ -28,7 +27,6 @@ router.get('/token/:serverId', (req, res) => {
   res.json({ token, sessionId });
 });
 
-module.exports = router;
 
 // ── Pending tokens (in-memory, short TTL) ────────────────────────────────────
 const pendingTokens = new Map();
@@ -64,10 +62,10 @@ async function handleTerminalWS(ws, req, db) {
   };
 
   if (srv.ssh_key) {
-    sshConfig.privateKey = decrypt(srv.ssh_key);
-    if (srv.ssh_passphrase) sshConfig.passphrase = decrypt(srv.ssh_passphrase);
+    sshConfig.privateKey = srv.ssh_key;
+    if (srv.ssh_passphrase) sshConfig.passphrase = srv.ssh_passphrase;
   } else if (srv.ssh_password) {
-    sshConfig.password = decrypt(srv.ssh_password);
+    sshConfig.password = srv.ssh_password;
   }
 
   try {
@@ -93,5 +91,4 @@ async function handleTerminalWS(ws, req, db) {
   ws.on('error', () => closeSession(sessionId));
 }
 
-module.exports.handleTerminalWS = handleTerminalWS;
-module.exports.pendingTokens    = pendingTokens;
+module.exports = { router, handleTerminalWS, pendingTokens };
