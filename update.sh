@@ -30,7 +30,10 @@ ENV_FILE="$INSTALL_DIR/.env"
 GITHUB_TOKEN=$(grep -E '^GITHUB_TOKEN=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 APP_PORT=$(grep -E '^APP_PORT=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' | tr -d "'" || echo "3000")
 
-[ -z "$GITHUB_TOKEN" ] && error "GITHUB_TOKEN not found in .env"
+# Token is optional for public repos
+if [ -z "$GITHUB_TOKEN" ]; then
+  warn "No GITHUB_TOKEN in .env — using public (unauthenticated) access."
+fi
 
 # ─── Get current installed version ────────────────────────────────────────────
 CURRENT_VERSION="unknown"
@@ -41,8 +44,11 @@ info "Installed version: $CURRENT_VERSION"
 
 # ─── Check GitHub for latest release tag ──────────────────────────────────────
 info "Checking GitHub for latest release..."
-LATEST_JSON=$(curl -sf \
-  -H "Authorization: token ${GITHUB_TOKEN}" \
+# Build auth header only if token available
+CURL_AUTH=""
+[ -n "$GITHUB_TOKEN" ] && CURL_AUTH="-H \"Authorization: token ${GITHUB_TOKEN}\""
+
+LATEST_JSON=$(curl -sf $CURL_AUTH \
   -H "Accept: application/vnd.github.v3+json" \
   "https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest" \
   --max-time 15 2>/dev/null || echo "")
@@ -87,10 +93,15 @@ fi
 # ─── Pull latest code ──────────────────────────────────────────────────────────
 info "Updating to $LATEST_VERSION..."
 
-# Make sure remote URL has the token
-git -C "$INSTALL_DIR" remote set-url origin \
-  "https://${GITHUB_TOKEN}@github.com/${REPO_OWNER}/${REPO_NAME}.git"
-chmod 600 "$INSTALL_DIR/.git/config"
+# Update remote URL — use token if available, else public URL
+if [ -n "$GITHUB_TOKEN" ]; then
+  git -C "$INSTALL_DIR" remote set-url origin \
+    "https://${GITHUB_TOKEN}@github.com/${REPO_OWNER}/${REPO_NAME}.git"
+  chmod 600 "$INSTALL_DIR/.git/config"
+else
+  git -C "$INSTALL_DIR" remote set-url origin \
+    "https://github.com/${REPO_OWNER}/${REPO_NAME}.git"
+fi
 
 git -C "$INSTALL_DIR" fetch origin 2>&1 | tail -3
 git -C "$INSTALL_DIR" reset --hard origin/main 2>&1 | tail -3
