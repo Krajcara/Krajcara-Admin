@@ -15,7 +15,7 @@ const { requireAuth } = require('./middleware/auth');
 const { autoAuditMiddleware } = require('./middleware/audit');
 const scheduler  = require('./scheduler');
 
-const authRoutes    = require('./routes/auth');
+const { router: authRoutes } = require('./routes/auth');
 const totpRoutes    = require('./routes/totp');
 const usersRoutes   = require('./routes/users');
 const settingsRoutes = require('./routes/settings');
@@ -38,7 +38,8 @@ const patchRoutes    = require('./routes/patches');
 const reportsRoutes  = require('./routes/reports');
 // Faza 1 — Servers & Scripts + Web Terminal
 const serversRoutes  = require('./routes/servers');
-const { router: terminalRoutes, handleTerminalWS } = require('./routes/terminal');
+const terminalRoutes = require('./routes/terminal');
+const { handleTerminalWS } = terminalRoutes;
 // Faza 2 — Metrics History
 const metricsRoutes  = require('./routes/metrics');
 // Faza 3 — Windows Servers / WinRM
