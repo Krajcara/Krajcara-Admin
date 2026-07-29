@@ -1,13 +1,13 @@
-import { useState, useEffect, useCallback } from 'react'
+import { AlertTriangle, ShieldAlert, useState, useEffect, useCallback } from 'react'
 import {
-  Activity, Server, KeyRound, AppWindow,
+  AlertTriangle, ShieldAlert, Activity, Server, KeyRound, AppWindow,
   RefreshCw, Wifi, WifiOff, Download, Upload, CheckCircle, Globe,
   AlertCircle, AlertTriangle, Info, Bell
 } from 'lucide-react'
-import { Card, CardHeader, CardTitle, Spinner, Badge } from '../components/shared/UI'
-import { cn, timeAgo } from '../lib/utils'
+import { AlertTriangle, ShieldAlert, Card, CardHeader, CardTitle, Spinner, Badge } from '../components/shared/UI'
+import { AlertTriangle, ShieldAlert, cn, timeAgo } from '../lib/utils'
 import api from '../lib/api'
-import { useSocket } from '../hooks/useSocket'
+import { AlertTriangle, ShieldAlert, useSocket } from '../hooks/useSocket'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtVal(v, d = 1) {
@@ -492,6 +492,15 @@ export default function DashboardPage() {
       <ProxmoxRow proxmox={proxmox} />
 
       <DnsRow dnsServers={dns} />
+
+      {/* Expiring widgets */}
+      {(licences.some(l => { const d = l.expiry_date && Math.ceil((new Date(l.expiry_date) - new Date()) / 86400000); return d != null && d <= 30; }) ||
+        monitors.some(m => m.ssl_days != null && m.ssl_days <= 30)) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <ExpiringLicencesWidget licences={licences} />
+          <SSLWidget monitors={monitors} />
+        </div>
+      )}
 
       <NotificationsPanel notifications={notifications} />
 
