@@ -24,7 +24,7 @@ router.get('/', (req, res) => {
 router.get('/public', (req, res) => {
   // This route needs to be outside requireAuth — handled in index.js
   const monitors = db.prepare(
-    'SELECT id, label, type, last_status, last_latency_ms, last_checked_at FROM monitors WHERE enabled = 1 ORDER BY label'
+    'SELECT id, label, type, target, last_status, last_latency_ms, last_checked_at, ssl_days, ssl_expiry, ssl_error FROM monitors WHERE enabled = 1 ORDER BY label'
   ).all();
   res.json(monitors);
 });
