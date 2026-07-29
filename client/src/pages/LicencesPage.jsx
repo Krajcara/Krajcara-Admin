@@ -52,6 +52,37 @@ const EMPTY_LIC = {
   url: '', licence_username: '', licence_password: '', licence_mfa: false, notes: ''
 }
 
+function PasswordReveal({ password }) {
+  const [show, setShow] = useState(false)
+  const [copied, setCopied] = useState(false)
+  if (!password) return null
+  const copy = () => {
+    navigator.clipboard.writeText(password).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+  return (
+    <div className="flex items-center gap-1 mt-0.5">
+      <span className="text-xs font-mono text-gray-400">
+        {show ? password : '••••••••'}
+      </span>
+      <button onClick={() => setShow(s => !s)}
+        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors ml-1"
+        title={show ? 'Hide password' : 'Show password'}>
+        {show ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+      </button>
+      {show && (
+        <button onClick={copy}
+          className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+          title="Copy password">
+          {copied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+        </button>
+      )}
+    </div>
+  )
+}
+
 function LicenceModal({ licence, onClose, onSaved }) {
   const isEdit = !!licence?.id
   const [form,     setForm]     = useState(isEdit ? {
@@ -513,6 +544,7 @@ export default function LicencesPage() {
                             {l.licence_mfa ? <ShieldCheck className="w-3.5 h-3.5 text-green-500" title="MFA enabled" /> : null}
                           </div>
                           {l.licence_username && <p className="text-xs text-gray-400 font-mono mt-0.5">{l.licence_username}</p>}
+                          {l.licence_password && <PasswordReveal password={l.licence_password} />}
                           {l.is_free ? <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 px-1.5 py-0.5 rounded font-medium">Free</span> : null}
                         </Td>
                         <Td className="text-gray-600 dark:text-gray-400">{l.vendor}</Td>
