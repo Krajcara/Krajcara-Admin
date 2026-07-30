@@ -1,12 +1,13 @@
+import { useState, useEffect, useCallback } from 'react'
 import {
   AlertTriangle, ShieldAlert, Activity, Server, KeyRound, AppWindow,
   RefreshCw, Wifi, WifiOff, Download, Upload, CheckCircle, Globe,
-  AlertCircle, Info, Bell
+  AlertCircle, AlertTriangle, Info, Bell
 } from 'lucide-react'
-import { Card, CardHeader, CardTitle, Spinner, Badge } from '../components/shared/UI'
-import { cn, timeAgo } from '../lib/utils'
+import { AlertTriangle, ShieldAlert, Card, CardHeader, CardTitle, Spinner, Badge } from '../components/shared/UI'
+import { AlertTriangle, ShieldAlert, cn, timeAgo } from '../lib/utils'
 import api from '../lib/api'
-import { useSocket } from '../hooks/useSocket'
+import { AlertTriangle, ShieldAlert, useSocket } from '../hooks/useSocket'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtVal(v, d = 1) {
@@ -406,6 +407,77 @@ function NotificationsPanel({ notifications }) {
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
+// ── Expiring licences widget ──────────────────────────────────────────────────
+function ExpiringLicencesWidget({ licences }) {
+  const now = new Date()
+  const expiring = licences
+    .filter(l => l.expiry_date && !l.is_free)
+    .map(l => ({ ...l, days: Math.ceil((new Date(l.expiry_date) - now) / 86400000) }))
+    .filter(l => l.days <= 30)
+    .sort((a, b) => a.days - b.days)
+  if (!expiring.length) return null
+  return (
+    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 dark:border-gray-800">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-amber-500" />
+          <span className="text-sm font-semibold text-gray-900 dark:text-white">Licences expiring soon</span>
+        </div>
+        <a href="/licences" className="text-xs text-brand hover:underline">View all</a>
+      </div>
+      <div className="divide-y divide-gray-100 dark:divide-gray-800">
+        {expiring.slice(0, 5).map(l => (
+          <div key={l.id} className="flex items-center justify-between px-5 py-2.5">
+            <div>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">{l.licence_type}</p>
+              <p className="text-xs text-gray-400">{l.vendor}</p>
+            </div>
+            <span className={cn('text-xs font-bold px-2 py-0.5 rounded-full',
+              l.days <= 7 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+              'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400')}>
+              {l.days <= 0 ? 'Expired' : `${l.days}d`}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── SSL certificates widget ───────────────────────────────────────────────────
+function SSLWidget({ monitors }) {
+  const expiring = (monitors || [])
+    .filter(m => m.ssl_days != null && m.ssl_days <= 30)
+    .sort((a, b) => a.ssl_days - b.ssl_days)
+  if (!expiring.length) return null
+  return (
+    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 dark:border-gray-800">
+        <div className="flex items-center gap-2">
+          <ShieldAlert className="w-4 h-4 text-red-500" />
+          <span className="text-sm font-semibold text-gray-900 dark:text-white">SSL certificates expiring</span>
+        </div>
+        <a href="/monitors" className="text-xs text-brand hover:underline">View all</a>
+      </div>
+      <div className="divide-y divide-gray-100 dark:divide-gray-800">
+        {expiring.slice(0, 5).map(m => (
+          <div key={m.id} className="flex items-center justify-between px-5 py-2.5">
+            <div>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">{m.label}</p>
+              <p className="text-xs text-gray-400 truncate max-w-xs">{m.target}</p>
+            </div>
+            <span className={cn('text-xs font-bold px-2 py-0.5 rounded-full',
+              m.ssl_days <= 7 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+              'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400')}>
+              {m.ssl_days <= 0 ? 'Expired' : `${m.ssl_days}d`}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function DashboardPage() {
   const [monitors,         setMonitors]         = useState([])
   const [monitorStatuses,  setMonitorStatuses]   = useState({})
