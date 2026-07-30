@@ -35,13 +35,13 @@ router.post('/local', requireRole('superadmin', 'admin'), (req, res) => {
   const existing = db.prepare('SELECT id FROM dns_local WHERE role = ?').get(role);
   if (existing) {
     db.prepare('UPDATE dns_local SET type=?, ip=?, api_key=?, label=?, updated_at=datetime(\'now\') WHERE role=?')
-      .run(type || 'other', ip.trim(), api_key ? encrypt(api_key) : null, label || null, role);
+      .run(type || 'other', ip.trim(), api_key ? api_key : null, label || null, role);
     writeAuditLog({ userId: req.user.id, username: req.user.username, action: 'update', module: 'dns', entityName: `Local DNS ${role}`, ip: req.ip, userAgent: req.headers['user-agent'] });
     return res.json({ ok: true, id: existing.id });
   }
 
   const r = db.prepare('INSERT INTO dns_local (role, type, ip, api_key, label) VALUES (?,?,?,?,?)')
-    .run(role, type || 'other', ip.trim(), api_key ? encrypt(api_key) : null, label || null);
+    .run(role, type || 'other', ip.trim(), api_key ? api_key : null, label || null);
   writeAuditLog({ userId: req.user.id, username: req.user.username, action: 'create', module: 'dns', entityName: `Local DNS ${role}`, ip: req.ip, userAgent: req.headers['user-agent'] });
   res.json({ ok: true, id: r.lastInsertRowid });
 });
@@ -59,7 +59,7 @@ router.get('/local/:id/status', async (req, res) => {
   if (!server) return res.status(404).json({ error: 'Not found' });
 
   const { type, ip } = server;
-  const api_key = decrypt(server.api_key);
+  const api_key = server.api_key;
   const baseUrl = ip.startsWith('http') ? ip.replace(/\/$/, '') : `http://${ip}`;
   const dnsIp   = ip.replace(/^https?:\/\//, '').split(':')[0];
   const typeLabel = DNS_TYPES[type] || type;
