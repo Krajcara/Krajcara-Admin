@@ -383,11 +383,9 @@ krajcara-admin/
 - **Profile → Active sessions** — device type, IP, last seen, terminate individual or all other sessions
 - Expired sessions cleaned up hourly
 
-### Phase 15 — Faza A: Encryption of sensitive fields
-- New `encryptionService.js` — AES-256-GCM, key derived from `APP_SECRET`
-- Auto-migration on startup encrypts all existing plain-text values
-- Encrypted fields: SSH passwords/keys, WinRM passwords, licence passwords, Entra client secrets, SNMP passwords, DNS API keys, Proxmox/Cloudflare/M365/SMTP tokens in settings
-- Format in DB: `enc:v1:<base64>` — backward compatible with plain-text values
+### Phase 15 — Faza A: Reverted
+- Encryption of sensitive fields was implemented and later reverted
+- All sensitive values stored as plain text (application is intended for local/internal use only)
 
 ### Phase 14 — Faza C: Backup v2
 - Backup now downloads a **ZIP** file containing `krajcara-admin.db` + `env.enc` (AES-256-GCM encrypted `.env`)
@@ -503,7 +501,7 @@ krajcara-admin/
 - ✅ **Phase 12** — TV Monitor redesign (Proxmox only, 3 view modes, Settings-controlled)
 - ✅ **Phase 13** — Status Page redesign (single page, clock, DNS/domain checks, speed)
 - ✅ **Phase 14** — Backup v2 (ZIP + encrypted .env, pre-restore backup, auto-restart)
-- ✅ **Phase 15** — Encryption of sensitive fields (AES-256-GCM, auto-migration)
+- ~~Phase 15~~ — Encryption reverted (local use only)
 - ✅ **Phase 16** — Session management (active sessions, terminate, sign out all)
 - ✅ **Phase 17** — SSL monitoring, Dashboard widgets, PWA
 - ✅ **Phase 18** — Nginx / HTTPS optional install
