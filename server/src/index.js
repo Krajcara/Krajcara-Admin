@@ -11,7 +11,6 @@ const { Server } = require('socket.io');
 const rateLimit  = require('express-rate-limit');
 
 const db         = require('./db/database');
-const { migrateEncryption } = require('./db/migrateEncryption');
 const { requireAuth } = require('./middleware/auth');
 const { autoAuditMiddleware } = require('./middleware/audit');
 const scheduler  = require('./scheduler');
@@ -519,9 +518,6 @@ app.get('/api/dns/servers/public', async (req, res) => {
     res.json(result);
   } catch { res.json([]); }
 });
-
-// Run encryption migration
-try { migrateEncryption(db); } catch(e) { console.error('[EncMigration]', e.message); }
 
 // ── Public Cloudflare zones summary ──────────────────────────────────────────
 app.get('/api/dns/cloudflare/public', async (req, res) => {
