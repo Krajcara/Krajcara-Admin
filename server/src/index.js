@@ -11,6 +11,7 @@ const { Server } = require('socket.io');
 const rateLimit  = require('express-rate-limit');
 
 const db         = require('./db/database');
+const { migrateEncryption } = require('./db/migrateEncryption');
 const { requireAuth } = require('./middleware/auth');
 const { autoAuditMiddleware } = require('./middleware/audit');
 const scheduler  = require('./scheduler');
@@ -29,7 +30,7 @@ const routersRoutes  = require('./routes/routers');
 const dnsRoutes      = require('./routes/dns');
 const proxmoxRoutes  = require('./routes/proxmox');
 const { router: scannerRouter, initSchedules } = require('./routes/scanner');
-const netspeedRoutes = require('./routes/netspeed');
+const { router: netspeedRoutes } = require('./routes/netspeed');
 const m365Routes     = require('./routes/m365');
 const { router: backupRouter, runAutoBackup } = require('./routes/backup');
 const notifRoutes    = require('./routes/notifications');
@@ -144,9 +145,11 @@ app.get('/api/health', async (_req, res) => {
     services,
   });
 });
+// Cleanup expired sessions hourly
+setInterval(() => { try { db.prepare("DELETE FROM sessions WHERE expires_at < datetime('now')").run(); } catch {} }, 3600000);
+
 app.use('/api/auth',        authRoutes);
 app.use('/api/totp',        totpRoutes);
-app.get('/api/settings/app', settingsRoutes);
 app.use('/api/status',      statusRoutes);
 // Public endpoints — no auth
 app.get('/api/monitors/public', (req, res) => {
@@ -518,6 +521,9 @@ app.get('/api/dns/servers/public', async (req, res) => {
   } catch { res.json([]); }
 });
 
+// Run encryption migration
+try { migrateEncryption(db); } catch(e) { console.error('[EncMigration]', e.message); }
+
 // ── Public Cloudflare zones summary ──────────────────────────────────────────
 app.get('/api/dns/cloudflare/public', async (req, res) => {
   try {
@@ -624,7 +630,7 @@ app.use('/api/routers',     requireAuth, routersRoutes);
 app.use('/api/dns',         requireAuth, dnsRoutes);
 app.use('/api/proxmox',     requireAuth, proxmoxRoutes);
 app.use('/api/scanner',     requireAuth, scannerRouter);
-app.use('/api/netspeed',    requireAuth, netspeedRoutes.router);
+app.use('/api/netspeed',    requireAuth, netspeedRoutes);
 app.use('/api/m365',       requireAuth, m365Routes);
 app.use('/api/backup',     requireAuth, backupRouter);
 app.use('/api/notifications', requireAuth, notifRoutes);
