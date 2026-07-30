@@ -26,7 +26,7 @@ function getSettings(maskSecrets = true) {
   const rows = db.prepare('SELECT key, value FROM settings').all();
   const s = {};
   rows.forEach(r => {
-    const rawVal = SENSITIVE_KEYS.has(r.key) && r.value ? decrypt(r.value) : r.value;
+    const rawVal = SENSITIVE_KEYS.has(r.key) && r.value ? r.value : r.value;
     s[r.key] = (maskSecrets && SECRET_KEYS.includes(r.key) && rawVal) ? '***' : rawVal;
   });
   if (!s.app_name) s.app_name = 'Krajcara Admin';
@@ -52,7 +52,7 @@ router.post('/save', requireAuth, requireRole('superadmin', 'admin'), (req, res)
     for (const [key, val] of Object.entries(req.body)) {
       if (!ALL_KEYS.includes(key)) continue;
       if (val === '***' || val === null || val === undefined) continue;
-      const storeVal = SENSITIVE_KEYS.has(key) && val && val !== '' ? encrypt(String(val)) : (val === '' ? null : String(val));
+      const storeVal = SENSITIVE_KEYS.has(key) && val && val !== '' ? String(val) : (val === '' ? null : String(val));
       stmt.run(key, storeVal);
     }
   })();
