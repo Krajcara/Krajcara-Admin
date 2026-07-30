@@ -1,6 +1,5 @@
 'use strict';
 const express = require('express');
-const { decrypt } = require('../services/encryptionService');
 const router  = express.Router();
 const axios   = require('axios');
 const db      = require('../db/database');
@@ -47,7 +46,7 @@ function getSkuName(partNumber) {
 function getSettings() {
   return {
     client_id:     db.prepare("SELECT value FROM settings WHERE key='m365_client_id'").get()?.value,
-    client_secret: decrypt(db.prepare("SELECT value FROM settings WHERE key='m365_client_secret'").get()?.value),
+    client_secret: db.prepare("SELECT value FROM settings WHERE key='m365_client_secret'".get()?.value),
     tenant_id:     db.prepare("SELECT value FROM settings WHERE key='m365_tenant_id'").get()?.value,
   };
 }
