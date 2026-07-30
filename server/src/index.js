@@ -39,8 +39,7 @@ const patchRoutes    = require('./routes/patches');
 const reportsRoutes  = require('./routes/reports');
 // Faza 1 — Servers & Scripts + Web Terminal
 const serversRoutes  = require('./routes/servers');
-const terminalRoutes = require('./routes/terminal');
-const { handleTerminalWS } = terminalRoutes;
+const { router: terminalRoutes, handleTerminalWS } = require('./routes/terminal');
 // Faza 2 — Metrics History
 const metricsRoutes  = require('./routes/metrics');
 // Faza 3 — Windows Servers / WinRM
