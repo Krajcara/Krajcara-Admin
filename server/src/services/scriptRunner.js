@@ -1,6 +1,5 @@
 'use strict';
 const { Client } = require('ssh2');
-const { decrypt } = require('./encryptionService');
 const db = require('../db/database');
 
 // Run a script on one server, streaming output via callback
@@ -17,10 +16,10 @@ function runOnServer(server, scriptContent, onData, onDone) {
     };
 
     if (server.ssh_key) {
-      sshOpts.privateKey = decrypt(server.ssh_key);
-      if (server.ssh_passphrase) sshOpts.passphrase = decrypt(server.ssh_passphrase);
+      sshOpts.privateKey = server.ssh_key;
+      if (server.ssh_passphrase) sshOpts.passphrase = server.ssh_passphrase;
     } else if (server.ssh_password) {
-      sshOpts.password = decrypt(server.ssh_password);
+      sshOpts.password = server.ssh_password;
     }
 
     conn.on('ready', () => {
