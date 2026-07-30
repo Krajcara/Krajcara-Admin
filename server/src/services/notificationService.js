@@ -1,5 +1,4 @@
 'use strict';
-const { decrypt } = require('./encryptionService');
 const db = require('../db/database');
 
 // ── Create notification ───────────────────────────────────────────────────────
@@ -58,7 +57,7 @@ async function sendEmailNotification(notif) {
   // Try M365 first
   const tid    = db.prepare("SELECT value FROM settings WHERE key='m365_tenant_id'").get()?.value;
   const cid    = db.prepare("SELECT value FROM settings WHERE key='m365_client_id'").get()?.value;
-  const sec    = decrypt(db.prepare("SELECT value FROM settings WHERE key='m365_client_secret'").get()?.value);
+  const sec    = db.prepare("SELECT value FROM settings WHERE key='m365_client_secret'".get()?.value);
   const sender = db.prepare("SELECT value FROM settings WHERE key='notif_email_sender'").get()?.value;
 
   if (tid && cid && sec && sender) {
@@ -257,7 +256,7 @@ async function checkProxmoxVMs() {
   const url     = db.prepare("SELECT value FROM settings WHERE key='proxmox_url'").get()?.value;
   const tokenId = db.prepare("SELECT value FROM settings WHERE key='proxmox_token_id'").get()?.value || '';
   const user    = db.prepare("SELECT value FROM settings WHERE key='proxmox_user'").get()?.value || 'root@pam';
-  const secret  = decrypt(db.prepare("SELECT value FROM settings WHERE key='proxmox_api_token'").get()?.value);
+  const secret  = db.prepare("SELECT value FROM settings WHERE key='proxmox_api_token'".get()?.value);
   if (!url || !secret) return;
 
   const axios      = require('axios');
