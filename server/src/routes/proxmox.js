@@ -15,7 +15,7 @@ function getConfig() {
   const url     = db.prepare("SELECT value FROM settings WHERE key='proxmox_url'").get()?.value;
   const user    = db.prepare("SELECT value FROM settings WHERE key='proxmox_user'").get()?.value || 'root@pam';
   const tokenId = db.prepare("SELECT value FROM settings WHERE key='proxmox_token_id'").get()?.value || '';
-  const secret  = db.prepare("SELECT value FROM settings WHERE key='proxmox_api_token'".get()?.value) || '';
+  const secret  = db.prepare("SELECT value FROM settings WHERE key='proxmox_api_token'").get()?.value || '';
   let token;
   if (secret.includes('!') && secret.includes('=')) token = secret;
   else if (tokenId && secret) token = `${user}!${tokenId}=${secret}`;
