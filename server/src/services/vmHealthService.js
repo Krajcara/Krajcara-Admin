@@ -1,6 +1,5 @@
 'use strict';
 const https  = require('https');
-const { decrypt } = require('./encryptionService');
 const axios  = require('axios');
 const db     = require('../db/database');
 const { createNotification } = require('./notificationService');
@@ -32,7 +31,7 @@ function getConfig() {
   const tid  = get('proxmox_token_id') || '';
   const sec  = get('proxmox_api_token');
   if (!url || !sec) return null;
-  const decSec = decrypt(sec);
+  const decSec = sec;
   return { url, token: tid ? `${user}!${tid}=${decSec}` : decSec };
 }
 
