@@ -1,6 +1,5 @@
 'use strict';
 const express = require('express');
-const { encrypt, decrypt } = require('../services/encryptionService');
 const router  = express.Router();
 const db      = require('../db/database');
 const { requireAuth, requireRole } = require('../middleware/auth');
@@ -79,7 +78,7 @@ router.post('/', requireRole('superadmin', 'admin'), (req, res) => {
   const r = db.prepare(`
     INSERT INTO winrm_servers (name, ip_address, winrm_port, winrm_https, winrm_user, winrm_password, description, group_name)
     VALUES (?,?,?,?,?,?,?,?)
-  `).run(name, ip_address, winrm_port || 5985, winrm_https ? 1 : 0, winrm_user, winrm_password ? encrypt(winrm_password) : null, description || null, group_name || null);
+  `).run(name, ip_address, winrm_port || 5985, winrm_https ? 1 : 0, winrm_user, winrm_password ? winrm_password : null, description || null, group_name || null);
   res.status(201).json(omitPw(db.prepare('SELECT * FROM winrm_servers WHERE id=?').get(r.lastInsertRowid)));
 });
 
@@ -110,7 +109,7 @@ router.delete('/:id', requireRole('superadmin', 'admin'), (req, res) => {
 router.post('/:id/test', async (req, res) => {
   const s = db.prepare('SELECT * FROM winrm_servers WHERE id=?').get(req.params.id);
   if (!s) return res.status(404).json({ error: 'Not found' });
-  const srv = { ...s, winrm_password: decrypt(s.winrm_password) };
+  const srv = { ...s, winrm_password: s.winrm_password };
   const result = await testConnection(srv);
   if (result.ok) db.prepare("UPDATE winrm_servers SET last_seen=datetime('now') WHERE id=?").run(s.id);
   res.json(result);
@@ -121,7 +120,7 @@ router.get('/:id/metrics/live', async (req, res) => {
   const s = db.prepare('SELECT * FROM winrm_servers WHERE id=?').get(req.params.id);
   if (!s) return res.status(404).json({ error: 'Not found' });
   try {
-    const srv = { ...s, winrm_password: decrypt(s.winrm_password) };
+    const srv = { ...s, winrm_password: s.winrm_password };
   const m = await getMetrics(srv);
     // Store in metrics table
     db.prepare(`INSERT INTO winrm_metrics (server_id, cpu_pct, mem_pct, disk_pct, uptime_s, process_count, net_rx_bytes, net_tx_bytes)
@@ -151,7 +150,7 @@ router.get('/:id/processes', async (req, res) => {
   const s = db.prepare('SELECT * FROM winrm_servers WHERE id=?').get(req.params.id);
   if (!s) return res.status(404).json({ error: 'Not found' });
   try {
-    const srv2 = { ...s, winrm_password: decrypt(s.winrm_password) };
+    const srv2 = { ...s, winrm_password: s.winrm_password };
   const procs = await getProcesses(srv2, parseInt(req.query.limit) || 50);
     res.json(procs);
   } catch (e) {
