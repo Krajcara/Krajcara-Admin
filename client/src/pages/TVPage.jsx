@@ -335,7 +335,7 @@ export default function TVPage() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-950 text-white overflow-hidden"
-      style={{ fontSize: textSize === 'large' ? '20px' : textSize === 'medium' ? '18px' : '16px' }}>
+      style={{ zoom: textSize === 'large' ? 1.25 : textSize === 'medium' ? 1.12 : 1 }}>
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-2.5 bg-gray-900 border-b border-gray-800 flex-shrink-0">
         <div className="flex items-center gap-3">
