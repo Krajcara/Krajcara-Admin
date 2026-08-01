@@ -299,6 +299,7 @@ export default function TVPage() {
   const [lastUpdated, setLastUpdated] = useState(null)
   const [error,       setError]       = useState(null)
   const [viewMode,    setViewMode]    = useState('cards')
+  const [textSize,    setTextSize]    = useState('default')
   const intervalRef = useRef(null)
 
   const load = async () => {
@@ -309,6 +310,7 @@ export default function TVPage() {
         if (sv.ok) {
           const sd = await sv.json()
           if (sd.tv_proxmox_view) setViewMode(sd.tv_proxmox_view)
+        if (sd.tv_text_size)     setTextSize(sd.tv_text_size)
         }
       } catch {}
 
@@ -332,7 +334,8 @@ export default function TVPage() {
   }, [])
 
   return (
-    <div className="flex flex-col h-screen bg-gray-950 text-white overflow-hidden">
+    <div className="flex flex-col h-screen bg-gray-950 text-white overflow-hidden"
+      style={{ fontSize: textSize === 'large' ? '20px' : textSize === 'medium' ? '18px' : '16px' }}>
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-2.5 bg-gray-900 border-b border-gray-800 flex-shrink-0">
         <div className="flex items-center gap-3">
