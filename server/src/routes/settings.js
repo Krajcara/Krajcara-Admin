@@ -15,7 +15,7 @@ const ALL_KEYS = [
   'app_name', 'github_repo',
   'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from', 'smtp_secure',
   'metrics_retention_days', 'audit_retention_days',
-  'tv_proxmox_view',
+  'tv_proxmox_view', 'display_text_size',
 ];
 
 function getSettings(maskSecrets = true) {
