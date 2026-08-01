@@ -328,6 +328,40 @@ export default function SettingsPage() {
           <Button loading={saving} onClick={() => save(['tv_proxmox_view'])}><Save className="w-4 h-4" />Save</Button>
         </div>
       </SettingsSection>
+      <SettingsSection title="Display">
+        <div className="space-y-4 max-w-lg">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Text size
+            </label>
+            <div className="space-y-2">
+              {[
+                { value: 'default', label: 'Default', desc: 'Standard browser size (16px)' },
+                { value: 'medium',  label: 'Medium',  desc: 'Slightly larger text (18px)' },
+                { value: 'large',   label: 'Large',   desc: 'Large text, easier to read (20px)' },
+              ].map(opt => (
+                <label key={opt.value} className="flex items-start gap-3 cursor-pointer p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                  <input type="radio" name="display_text_size"
+                    value={opt.value}
+                    checked={(settings.display_text_size || 'default') === opt.value}
+                    onChange={() => {
+                      setSettings(p => ({ ...p, display_text_size: opt.value }))
+                      const sizes = { default: '16px', medium: '18px', large: '20px' }
+                      document.documentElement.style.fontSize = sizes[opt.value]
+                    }}
+                    className="mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">{opt.label}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{opt.desc}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+          <Button loading={saving} onClick={() => save(['display_text_size'])}><Save className="w-4 h-4" />Save</Button>
+        </div>
+      </SettingsSection>
+
 
       <SettingsSection title="Email (SMTP)">
         <div className="space-y-4 max-w-lg">
