@@ -608,9 +608,10 @@ app.get('/api/dns/domains/public', async (req, res) => {
 app.get('/api/settings/app', (req, res) => {
   const get = k => db.prepare("SELECT value FROM settings WHERE key=?").get(k)?.value;
   res.json({
-    app_name:         get('app_name') || 'Krajcara Admin',
-    tv_proxmox_view:  get('tv_proxmox_view') || 'cards',
-    display_text_size: get('display_text_size') || 'default',
+    app_name:          get('app_name') || 'Krajcara Admin',
+    tv_proxmox_view:   get('tv_proxmox_view') || 'cards',
+    tv_text_size:      get('tv_text_size') || 'default',
+    status_text_size:  get('status_text_size') || 'default',
   });
 });
 
