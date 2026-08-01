@@ -85,10 +85,12 @@ export default function StatusPage() {
   const [m365,       setM365]       = useState(null)
   const [loading,    setLoading]    = useState(true)
   const [lastUpdate, setLastUpdate] = useState(null)
+  const [textSize,   setTextSize]   = useState('default')
   const ref = useRef(null)
 
   const load = async () => {
-    const [mon, rtr, dnsData, domData, spd, prx, m3] = await Promise.allSettled([
+    const [appSettings, mon, rtr, dnsData, domData, spd, prx, m3] = await Promise.allSettled([
+      fp('/api/settings/app').catch(() => ({})),
       fp('/api/monitors/public').catch(() => []),
       fp('/api/routers/public').catch(() => []),
       fp('/api/dns/servers/public').catch(() => []),
@@ -98,6 +100,7 @@ export default function StatusPage() {
       fp('/api/m365/health/public').catch(() => null),
     ])
     const rtrVal = rtr.status === 'fulfilled' ? (rtr.value || []) : []
+    if (appSettings.status === 'fulfilled' && appSettings.value?.status_text_size) setTextSize(appSettings.value.status_text_size)
     if (mon.status     === 'fulfilled') setMonitors(mon.value || [])
     if (rtr.status     === 'fulfilled') setRouters(rtrVal)
     if (dnsData.status === 'fulfilled') setDns(dnsData.value || [])
@@ -150,7 +153,7 @@ export default function StatusPage() {
   const lastTest = speed?.tests?.[0] || null
 
   return (
-    <div style={{ background: '#0d1117', padding: '20px 24px', minHeight: '100vh' }}>
+    <div style={{ background: '#0d1117', padding: '20px 24px', minHeight: '100vh', fontSize: textSize === 'large' ? '20px' : textSize === 'medium' ? '18px' : '16px' }}>
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}`}</style>
 
       {/* Header */}
