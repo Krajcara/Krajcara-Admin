@@ -153,7 +153,7 @@ export default function StatusPage() {
   const lastTest = speed?.tests?.[0] || null
 
   return (
-    <div style={{ background: '#0d1117', padding: '20px 24px', minHeight: '100vh', fontSize: textSize === 'large' ? '20px' : textSize === 'medium' ? '18px' : '16px' }}>
+    <div style={{ background: '#0d1117', minHeight: '100vh', zoom: textSize === 'large' ? 1.25 : textSize === 'medium' ? 1.12 : 1 }}>
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}`}</style>
 
       {/* Header */}
