@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore }  from './store/authStore'
 import { useThemeStore } from './store/themeStore'
@@ -45,6 +45,17 @@ function ProtectedRoute({ children, roles }) {
 export default function App() {
   const { init } = useThemeStore()
   useEffect(() => { init() }, [init])
+
+  // Apply text size from settings
+  useEffect(() => {
+    fetch('/api/settings/app')
+      .then(r => r.json())
+      .then(d => {
+        const sizes = { default: '16px', medium: '18px', large: '20px' }
+        document.documentElement.style.fontSize = sizes[d.display_text_size] || '16px'
+      })
+      .catch(() => {})
+  }, [])
 
   return (
     <BrowserRouter>
