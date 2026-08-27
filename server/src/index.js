@@ -27,6 +27,7 @@ const updateRoutes   = require('./routes/update');
 const monitorsRoutes = require('./routes/monitors');
 const routersRoutes  = require('./routes/routers');
 const dnsRoutes      = require('./routes/dns');
+const dnsAnalyticsRoutes = require('./routes/dnsAnalytics');
 const proxmoxRoutes  = require('./routes/proxmox');
 const { router: scannerRouter, initSchedules } = require('./routes/scanner');
 const { router: netspeedRoutes } = require('./routes/netspeed');
@@ -608,10 +609,8 @@ app.get('/api/dns/domains/public', async (req, res) => {
 app.get('/api/settings/app', (req, res) => {
   const get = k => db.prepare("SELECT value FROM settings WHERE key=?").get(k)?.value;
   res.json({
-    app_name:          get('app_name') || 'Krajcara Admin',
-    tv_proxmox_view:   get('tv_proxmox_view') || 'cards',
-    tv_text_size:      get('tv_text_size') || 'default',
-    status_text_size:  get('status_text_size') || 'default',
+    app_name:        get('app_name') || 'Krajcara Admin',
+    tv_proxmox_view: get('tv_proxmox_view') || 'cards',
   });
 });
 
@@ -625,6 +624,7 @@ app.use('/api/update',      requireAuth, updateRoutes);
 app.use('/api/monitors',    requireAuth, monitorsRoutes);
 app.use('/api/routers',     requireAuth, routersRoutes);
 app.use('/api/dns',         requireAuth, dnsRoutes);
+app.use('/api/dns/analytics', requireAuth, dnsAnalyticsRoutes);
 app.use('/api/proxmox',     requireAuth, proxmoxRoutes);
 app.use('/api/scanner',     requireAuth, scannerRouter);
 app.use('/api/netspeed',    requireAuth, netspeedRoutes);
