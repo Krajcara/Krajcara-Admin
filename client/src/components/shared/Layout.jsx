@@ -26,6 +26,7 @@ const NAV_GROUPS = [
       { to: '/monitors',   label: 'Uptime Monitor',   icon: Activity },
       { to: '/routers',    label: 'Routers',          icon: Network },
       { to: '/dns',        label: 'DNS',              icon: Globe },
+      { to: '/dns-analytics', label: 'DNS Analytics',    icon: BarChart2 },
       { to: '/netspeed',   label: 'Net Speed',        icon: Wifi },
     ],
   },
