@@ -15,6 +15,7 @@ import LicencesPage      from './pages/LicencesPage'
 import MonitorsPage      from './pages/MonitorsPage'
 import RoutersPage       from './pages/RoutersPage'
 import DnsPage           from './pages/DnsPage'
+import DnsAnalyticsPage  from './pages/DnsAnalyticsPage'
 import ProxmoxPage       from './pages/ProxmoxPage'
 import NetworkScannerPage from './pages/NetworkScannerPage'
 import ScanAutomationPage from './pages/ScanAutomationPage'
@@ -46,7 +47,6 @@ export default function App() {
   const { init } = useThemeStore()
   useEffect(() => { init() }, [init])
 
-
   return (
     <BrowserRouter>
       <Routes>
@@ -66,6 +66,7 @@ export default function App() {
           <Route path="monitors"         element={<MonitorsPage />} />
           <Route path="routers"          element={<RoutersPage />} />
           <Route path="dns"              element={<DnsPage />} />
+          <Route path="dns-analytics"     element={<DnsAnalyticsPage />} />
           <Route path="proxmox"          element={<ProxmoxPage />} />
           <Route path="scanner"          element={<NetworkScannerPage />} />
           <Route path="automation"       element={<ScanAutomationPage />} />
