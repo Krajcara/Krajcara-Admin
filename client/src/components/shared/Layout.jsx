@@ -27,6 +27,7 @@ const NAV_GROUPS = [
       { to: '/routers',    label: 'Routers',          icon: Network },
       { to: '/dns',        label: 'DNS',              icon: Globe },
       { to: '/dns-analytics', label: 'DNS Analytics',    icon: BarChart2 },
+      { to: '/fortigate',     label: 'FortiGate',        icon: Shield },
       { to: '/netspeed',   label: 'Net Speed',        icon: Wifi },
     ],
   },
