@@ -11,13 +11,9 @@ function getServer(id) {
   return db.prepare('SELECT * FROM dns_local WHERE id = ?').get(id);
 }
 
-// Build API base URL — use api_url if set, else fall back to ip with port 5380
 function getApiBase(server) {
   if (server.api_url) return server.api_url.replace(/\/$/, '');
-  // server.ip may be https://dns01.comdata.rs/ — not directly accessible
-  // Use internal_ip if available, else strip to use as-is
-  if (server.internal_ip) return `http://${server.internal_ip}:5380`;
-  // Try to use ip field directly (may already be internal)
+  if (server.internal_ip) return `http://${server.internal_ip}`;
   const ip = (server.ip || '').replace(/\/$/, '');
   return ip;
 }
