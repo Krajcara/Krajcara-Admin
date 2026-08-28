@@ -16,6 +16,7 @@ import MonitorsPage      from './pages/MonitorsPage'
 import RoutersPage       from './pages/RoutersPage'
 import DnsPage           from './pages/DnsPage'
 import DnsAnalyticsPage  from './pages/DnsAnalyticsPage'
+import FortigatePage     from './pages/FortigatePage'
 import ProxmoxPage       from './pages/ProxmoxPage'
 import NetworkScannerPage from './pages/NetworkScannerPage'
 import ScanAutomationPage from './pages/ScanAutomationPage'
@@ -67,6 +68,7 @@ export default function App() {
           <Route path="routers"          element={<RoutersPage />} />
           <Route path="dns"              element={<DnsPage />} />
           <Route path="dns-analytics"     element={<DnsAnalyticsPage />} />
+          <Route path="fortigate"          element={<FortigatePage />} />
           <Route path="proxmox"          element={<ProxmoxPage />} />
           <Route path="scanner"          element={<NetworkScannerPage />} />
           <Route path="automation"       element={<ScanAutomationPage />} />
