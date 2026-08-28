@@ -299,6 +299,22 @@ export default function SettingsPage() {
         </div>
       </SettingsSection>
 
+
+      <SettingsSection title="FortiGate">
+        <div className="space-y-4 max-w-lg">
+          <Input label="FortiGate URL" autoComplete="off"
+            value={settings.fortigate_url || ''}
+            onChange={f('fortigate_url')}
+            placeholder="https://10.1.0.1" />
+          <Input label="API Token" autoComplete="off"
+            value={settings.fortigate_api_token || ''}
+            onChange={f('fortigate_api_token')}
+            placeholder="API token from System → Administrators → REST API Admin" />
+          <Button loading={saving} onClick={() => save(['fortigate_url', 'fortigate_api_token'])}>
+            <Save className="w-4 h-4" />Save
+          </Button>
+        </div>
+      </SettingsSection>
       <SettingsSection title="TV Monitor">
         <div className="space-y-4 max-w-lg">
           <div>
@@ -328,67 +344,6 @@ export default function SettingsPage() {
           <Button loading={saving} onClick={() => save(['tv_proxmox_view'])}><Save className="w-4 h-4" />Save</Button>
         </div>
       </SettingsSection>
-      <SettingsSection title="TV Monitor — text size">
-        <div className="space-y-4 max-w-lg">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Text size on /tv page
-            </label>
-            <div className="space-y-2">
-              {[
-                { value: 'default', label: 'Default', desc: 'Normal size' },
-                { value: 'medium',  label: 'Medium',  desc: 'Larger text, better for big screens' },
-                { value: 'large',   label: 'Large',   desc: 'Large text, ideal for TV displays' },
-              ].map(opt => (
-                <label key={opt.value} className="flex items-start gap-3 cursor-pointer p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                  <input type="radio" name="tv_text_size"
-                    value={opt.value}
-                    checked={(settings.tv_text_size || 'default') === opt.value}
-                    onChange={() => setSettings(p => ({ ...p, tv_text_size: opt.value }))}
-                    className="mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">{opt.label}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{opt.desc}</p>
-                  </div>
-                </label>
-              ))}
-            </div>
-          </div>
-          <Button loading={saving} onClick={() => save(['tv_text_size'])}><Save className="w-4 h-4" />Save</Button>
-        </div>
-      </SettingsSection>
-
-      <SettingsSection title="Status page — text size">
-        <div className="space-y-4 max-w-lg">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Text size on /status page
-            </label>
-            <div className="space-y-2">
-              {[
-                { value: 'default', label: 'Default', desc: 'Normal size' },
-                { value: 'medium',  label: 'Medium',  desc: 'Larger text' },
-                { value: 'large',   label: 'Large',   desc: 'Large text, ideal for wall displays' },
-              ].map(opt => (
-                <label key={opt.value} className="flex items-start gap-3 cursor-pointer p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                  <input type="radio" name="status_text_size"
-                    value={opt.value}
-                    checked={(settings.status_text_size || 'default') === opt.value}
-                    onChange={() => setSettings(p => ({ ...p, status_text_size: opt.value }))}
-                    className="mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">{opt.label}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{opt.desc}</p>
-                  </div>
-                </label>
-              ))}
-            </div>
-          </div>
-          <Button loading={saving} onClick={() => save(['status_text_size'])}><Save className="w-4 h-4" />Save</Button>
-        </div>
-      </SettingsSection>
-
-
 
       <SettingsSection title="Email (SMTP)">
         <div className="space-y-4 max-w-lg">
